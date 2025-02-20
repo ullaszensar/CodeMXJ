@@ -24,12 +24,22 @@ class SequenceDiagramGenerator:
         # Remove any BOM markers
         code = code.replace('\ufeff', '')
 
+        # Remove multi-line comments
+        code = re.sub(r'/\*[\s\S]*?\*/', '', code)
+
+        # Remove single-line comments
+        code = re.sub(r'//.*$', '', code, flags=re.MULTILINE)
+
         # Ensure proper class structure
         if not re.search(r'(class|interface|enum)\s+\w+', code, re.MULTILINE):
             return ""
 
         # Remove any trailing semicolons after class closing braces
         code = re.sub(r'};(\s*)$', r'}\1', code)
+
+        # Ensure proper package declaration
+        if not code.strip().startswith("package"):
+            code = "package temp;\n" + code
 
         return code.strip()
 
@@ -42,81 +52,85 @@ class SequenceDiagramGenerator:
             logger.debug(f"Starting analysis for method: {method_name}")
             logger.debug(f"Original code length: {len(code)} characters")
 
-            # Pre-process the code
-            code = self._sanitize_java_code(code)
-            if not code:
-                logger.warning("Code was empty after sanitization")
-                raise ValueError("Invalid Java code structure")
-
-            logger.debug(f"Sanitized code length: {len(code)} characters")
-            logger.debug(f"Code sample (first 200 chars): {code[:200]}")
-
-            try:
-                tokens = list(javalang.tokenizer.tokenize(code))
-                logger.debug(f"Successfully tokenized code. Found {len(tokens)} tokens")
-
-                tree = javalang.parse.parse(code)
-                logger.debug("Successfully parsed Java code")
-            except Exception as parse_error:
-                logger.error(f"Failed to parse Java code: {str(parse_error)}")
-                logger.debug(f"Parse error details: {traceback.format_exc()}")
-                raise Exception(f"Failed to parse Java code: {str(parse_error)}")
+            # Split code into individual files based on package declarations
+            file_contents = self._split_java_files(code)
+            logger.debug(f"Split code into {len(file_contents)} files")
 
             self.interactions = []
             self.current_class = None
-
-            # First pass: identify the class containing the target method
-            class_found = False
             method_found = False
 
-            for path, node in tree.filter(javalang.tree.ClassDeclaration):
-                logger.debug(f"Analyzing class: {node.name}")
-                for method in node.methods:
-                    logger.debug(f"Found method: {method.name}")
-                    method_found = True
-                    if method.name == method_name:
-                        self.current_class = node.name
-                        logger.info(f"Found target method '{method_name}' in class: {self.current_class}")
-                        self._analyze_method_body(method)
-                        class_found = True
-                        break
-                if class_found:
-                    break
+            for file_code in file_contents:
+                try:
+                    # Pre-process the code
+                    processed_code = self._sanitize_java_code(file_code)
+                    if not processed_code:
+                        logger.debug("Skipping empty/invalid file after sanitization")
+                        continue
+
+                    logger.debug(f"Processing file with length: {len(processed_code)}")
+                    logger.debug(f"File content sample: {processed_code[:200]}")
+
+                    # Try to tokenize first
+                    try:
+                        tokens = list(javalang.tokenizer.tokenize(processed_code))
+                        logger.debug(f"Successfully tokenized code. Found {len(tokens)} tokens")
+                    except Exception as token_error:
+                        logger.warning(f"Tokenization failed: {str(token_error)}")
+                        continue
+
+                    # Parse the file
+                    tree = javalang.parse.parse(processed_code)
+                    logger.debug("Successfully parsed Java code")
+
+                    # Look for the target method
+                    for path, node in tree.filter(javalang.tree.ClassDeclaration):
+                        logger.debug(f"Analyzing class: {node.name}")
+                        for method in node.methods:
+                            if method.name == method_name:
+                                self.current_class = node.name
+                                logger.info(f"Found target method '{method_name}' in class: {self.current_class}")
+                                self._analyze_method_body(method)
+                                method_found = True
+                                break
+                        if method_found:
+                            break
+
+                except Exception as file_error:
+                    logger.warning(f"Error processing file: {str(file_error)}")
+                    continue
 
             if not method_found:
-                logger.warning("No methods found in any class")
-            if not self.current_class:
-                logger.error(f"Method '{method_name}' not found in any class")
                 raise Exception(f"Method '{method_name}' not found in any class")
 
-            # Generate diagram code
-            try:
-                diagram_code = self._generate_sequence_diagram()
-                logger.debug("Successfully generated diagram code")
-            except Exception as diagram_error:
-                logger.error(f"Failed to generate diagram code: {str(diagram_error)}")
-                raise Exception(f"Failed to generate diagram code: {str(diagram_error)}")
+            # Generate diagram
+            diagram_code = self._generate_sequence_diagram()
+            logger.debug("Successfully generated diagram code")
 
-            # Get diagram URL and fetch the image
+            # Get diagram image
             try:
-                logger.debug("Attempting to generate PlantUML diagram")
                 diagram_url = self.plantuml.get_url(diagram_code)
                 response = requests.get(diagram_url)
                 if response.status_code == 200:
                     logger.info("Successfully generated sequence diagram")
                     return diagram_code, response.content
                 else:
-                    error_msg = f"Failed to generate diagram image: HTTP {response.status_code}"
-                    logger.error(error_msg)
-                    raise Exception(error_msg)
+                    raise Exception(f"Failed to generate diagram image: HTTP {response.status_code}")
             except Exception as image_error:
                 logger.error(f"PlantUML error: {str(image_error)}")
-                raise Exception(f"Error generating diagram image: {str(image_error)}")
+                raise
 
         except Exception as e:
             logger.error(f"Failed to analyze method calls: {str(e)}")
             logger.debug(f"Full stack trace: {traceback.format_exc()}")
             raise
+
+    def _split_java_files(self, code: str) -> List[str]:
+        """Split combined Java code into individual files based on package declarations."""
+        # Split on package declarations
+        files = re.split(r'(?m)^package\s+', code)
+        # Add package declaration back to each file except the first empty one
+        return [f"package {file}" for file in files[1:] if file.strip()]
 
     def _analyze_method_body(self, method_node):
         """Analyze method body for method calls."""
@@ -178,7 +192,7 @@ class SequenceDiagramGenerator:
             for participant in sorted(participants):
                 diagram.append(f'participant "{participant}" as {participant}')
 
-            # Add interactions with arguments
+            # Add interactions
             for interaction in self.interactions:
                 args_str = f"({', '.join(interaction['arguments'])})" if interaction['arguments'] else ""
                 diagram.append(
@@ -190,14 +204,11 @@ class SequenceDiagramGenerator:
                 diagram.append(f"note over {self.current_class}: No method calls found")
 
             diagram.append("@enduml")
-
-            result = "\n".join(diagram)
-            logger.debug(f"Generated PlantUML diagram code:\n{result}")
-            return result
+            return "\n".join(diagram)
 
         except Exception as e:
             logger.error(f"Error generating sequence diagram: {str(e)}")
-            raise Exception(f"Failed to generate sequence diagram: {str(e)}")
+            raise
 
     def _extract_arguments(self, method_node) -> List[str]:
         """Extract method call arguments."""
