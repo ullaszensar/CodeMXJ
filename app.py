@@ -3,6 +3,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import os
 import tempfile
+import pandas as pd # Added import for pandas
 from zipfile import ZipFile
 from analyzers.code_parser import JavaCodeParser
 from analyzers.uml_generator import UMLGenerator
@@ -15,6 +16,7 @@ from analyzers.java_class import JavaClass # Added import statement
 import base64
 from io import BytesIO
 from analyzers.microservice_analyzer import MicroserviceAnalyzer
+from analyzers.legacy_table_analyzer import LegacyTableAnalyzer # Add to imports at the top
 
 st.set_page_config(
     page_title="Java Project Analyzer",
@@ -268,16 +270,16 @@ def main():
 
                             # Draw nodes
                             nx.draw_networkx_nodes(graph, pos, 
-                                                 node_color='lightblue',
-                                                 node_size=2000)
+                                                     node_color='lightblue',
+                                                     node_size=2000)
 
                             # Draw edges with different colors based on type
                             edge_colors = {'feign': 'blue', 'kafka': 'green', 'rest': 'red'}
                             for u, v, data in graph_data['edges']:
                                 edge_type = data.get('type', 'rest')
                                 nx.draw_networkx_edges(graph, pos,
-                                                     edgelist=[(u, v)],
-                                                     edge_color=edge_colors.get(edge_type, 'gray'))
+                                                         edgelist=[(u, v)],
+                                                         edge_color=edge_colors.get(edge_type, 'gray'))
 
                             # Add labels
                             nx.draw_networkx_labels(graph, pos)
@@ -449,30 +451,92 @@ def generate_call_graph(project_path):
         st.pyplot(fig)
 
 def analyze_database_schema():
-    st.subheader("Database Schema Analysis")
+    st.subheader("Database Analysis")
 
-    with st.spinner('Analyzing database schema...'):
-        analyzer = DatabaseAnalyzer()
+    analysis_type = st.radio(
+        "Select Analysis Type",
+        ["Schema Analysis", "Legacy Table Usage"]
+    )
 
-        try:
-            analyzer.connect_to_db()
-            schema_info = analyzer.analyze_schema()
+    if analysis_type == "Schema Analysis":
+        with st.spinner('Analyzing database schema...'):
+            analyzer = DatabaseAnalyzer()
 
-            if not schema_info:
-                st.warning("No database schema found")
+            try:
+                analyzer.connect_to_db()
+                schema_info = analyzer.analyze_schema()
+
+                if not schema_info:
+                    st.warning("No database schema found")
+                    return
+
+                for table_name, table_info in schema_info.items():
+                    with st.expander(f"Table: {table_name}", expanded=True):
+                        st.write("**Columns:**")
+                        for column in table_info['columns']:
+                            st.write(f"- {column['name']} ({column['type']}) {'NULL' if column['nullable'] else 'NOT NULL'}")
+
+                        st.write("**Foreign Keys:**")
+                        for fk in table_info['foreign_keys']:
+                            st.write(f"- References {fk['referred_table']} ({', '.join(fk['referred_columns'])})")
+            except Exception as e:
+                handle_error(e)
+
+    elif analysis_type == "Legacy Table Usage":
+        with st.spinner('Analyzing legacy table usage...'):
+            legacy_analyzer = LegacyTableAnalyzer()
+
+            # Analyze all Java files
+            for file in java_files:
+                file_path = os.path.join(project_path, file.path)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        code = f.read()
+                        legacy_analyzer.analyze_code(file_path, code)
+                except Exception as e:
+                    st.error(f"Error analyzing file {file_path}: {str(e)}")
+
+            usage_summary = legacy_analyzer.get_usage_summary()
+
+            if not usage_summary:
+                st.info("No legacy table usage found in the codebase")
                 return
 
-            for table_name, table_info in schema_info.items():
-                with st.expander(f"Table: {table_name}", expanded=True):
-                    st.write("**Columns:**")
-                    for column in table_info['columns']:
-                        st.write(f"- {column['name']} ({column['type']}) {'NULL' if column['nullable'] else 'NOT NULL'}")
+            # Create a tab for each legacy system
+            legacy_systems = list(usage_summary.keys())
+            if legacy_systems:
+                system_tabs = st.tabs(legacy_systems)
 
-                    st.write("**Foreign Keys:**")
-                    for fk in table_info['foreign_keys']:
-                        st.write(f"- References {fk['referred_table']} ({', '.join(fk['referred_columns'])})")
-        except Exception as e:
-            handle_error(e)
+                for idx, system in enumerate(legacy_systems):
+                    with system_tabs[idx]:
+                        st.subheader(f"{system} System Tables")
+
+                        # Create a DataFrame for better visualization
+                        data = []
+                        for usage in usage_summary[system]:
+                            data.append({
+                                'Table': usage.table_name,
+                                'File': usage.file_path,
+                                'Class': usage.class_name,
+                                'Method': usage.method_name,
+                                'Usage Type': usage.usage_type
+                            })
+
+                        if data:
+                            df = pd.DataFrame(data)
+                            st.dataframe(df, use_container_width=True)
+
+                            # Add download button for CSV export
+                            csv = df.to_csv(index=False)
+                            st.download_button(
+                                f"Download {system} Usage Data",
+                                csv,
+                                f"{system.lower()}_table_usage.csv",
+                                "text/csv"
+                            )
+                        else:
+                            st.info(f"No table usage found for {system}")
+
 
 if __name__ == "__main__":
     main()
