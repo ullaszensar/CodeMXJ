@@ -92,10 +92,23 @@ def main():
         # Add credits at the bottom of sidebar
         st.markdown("---")
         st.markdown("""
-        <div style='padding: 10px; background-color: rgba(0, 180, 216, 0.1); border: 1px solid rgba(0, 180, 216, 0.2); border-radius: 5px;'>
-            <h3 style='color: #00B4D8; margin: 0 0 10px 0;'>Design & Development</h3>
-            <p style='color: #0096C7; margin: 0 0 5px 0;'>Sr Solution Architect, Ullas Krishnan</p>
-            <p style='color: #0096C7; margin: 0;'>Zensar Team</p>
+        <div style='width: 100%;'>
+            <table style='width: 100%; border-collapse: collapse; background-color: #28a745; color: white; border-radius: 5px;'>
+                <tr>
+                    <th colspan='2' style='padding: 10px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.2);'>
+                        Design & Development
+                    </th>
+                </tr>
+                <tr>
+                    <td style='padding: 10px; text-align: center;'>Sr Solution Architect</td>
+                    <td style='padding: 10px; text-align: center;'>Ullas Krishnan</td>
+                </tr>
+                <tr>
+                    <td colspan='2' style='padding: 10px; text-align: center;'>
+                        Zensar Team
+                    </td>
+                </tr>
+            </table>
         </div>
         """, unsafe_allow_html=True)
 
