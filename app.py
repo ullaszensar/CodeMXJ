@@ -88,14 +88,24 @@ def main():
                 st.write(f"Project path: {project_path}")
                 st.write(f"Java files found: {st.session_state.get('project_files', [])}")
 
-            analyzer = ProjectAnalyzer()
-
-            # Show progress while analyzing
+            # Initialize analyzers
             with st.spinner('Analyzing project structure...'):
+                analyzer = ProjectAnalyzer()
+                ms_analyzer = MicroserviceAnalyzer()  # Initialize here for all tabs to use
+
                 java_files = analyzer.analyze_project(project_path)
                 if not java_files:
                     st.warning(f"No Java files found in {project_path}")
                     return
+
+                # Analyze all Java files for microservices
+                for file in java_files:
+                    file_path = os.path.join(project_path, file.path)
+                    service_name = file.path.split('/')[0] if '/' in file.path else 'default'
+
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        code = f.read()
+                        ms_analyzer.analyze_code(code, service_name)
 
                 project_structure = analyzer.get_project_structure(java_files)
 
@@ -148,6 +158,7 @@ def main():
                                 for method in class_info['methods']:
                                     st.markdown(f"- {method}")
                             st.markdown("---")
+
 
             # Diagrams Tab
             with diagrams_tab:
@@ -276,49 +287,44 @@ def main():
                         # Display graph
                         st.image(plot_image, caption="Call Graph", use_container_width=True)
 
+
             # Legacy Tables Tab
             with legacy_api_tab:
                 st.subheader("Legacy API Analysis")
 
-                api_details = ms_analyzer.get_api_details()
+                try:
+                    api_details = ms_analyzer.get_api_details()
 
-                if not api_details:
-                    st.info("No API endpoints found using legacy tables")
-                else:
-                    for service, endpoints in api_details.items():
-                        with st.expander(f"Service: {service}", expanded=True):
-                            for endpoint in endpoints:
-                                if endpoint['legacy_tables']:
-                                    st.markdown(f"""
-                                    ### {endpoint['method']} {endpoint['path']}
-                                    **Handler:** `{endpoint['class']}.{endpoint['handler']}`
+                    if not api_details:
+                        st.info("No API endpoints found using legacy tables")
+                    else:
+                        for service, endpoints in api_details.items():
+                            with st.expander(f"Service: {service}", expanded=True):
+                                for endpoint in endpoints:
+                                    if endpoint['legacy_tables']:
+                                        st.markdown(f"""
+                                        ### {endpoint['method']} {endpoint['path']}
+                                        **Handler:** `{endpoint['class']}.{endpoint['handler']}`
 
-                                    **Legacy Tables Used:**
-                                    {', '.join(endpoint['legacy_tables'])}
+                                        **Legacy Tables Used:**
+                                        {', '.join(endpoint['legacy_tables'])}
 
-                                    **Request Parameters:**
-                                    {', '.join(endpoint['request_params']) if endpoint['request_params'] else 'None'}
+                                        **Request Parameters:**
+                                        {', '.join(endpoint['request_params']) if endpoint['request_params'] else 'None'}
 
-                                    **Response Fields:**
-                                    {', '.join(endpoint['response_fields']) if endpoint['response_fields'] else 'None'}
-                                    """)
-                                    st.markdown("---")
+                                        **Response Fields:**
+                                        {', '.join(endpoint['response_fields']) if endpoint['response_fields'] else 'None'}
+                                        """)
+                                        st.markdown("---")
+                except Exception as e:
+                    st.error(f"Error analyzing legacy APIs: {str(e)}")
 
             # Service Graph Tab
             with services_tab:
                 st.subheader("Service-to-Service Interaction Analysis")
 
                 with st.spinner('Analyzing microservice interactions...'):
-                    ms_analyzer = MicroserviceAnalyzer()
-
-                    # Analyze all Java files
-                    for file in java_files:
-                        file_path = os.path.join(project_path, file.path)
-                        service_name = file.path.split('/')[0] if '/' in file.path else 'default'
-
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            code = f.read()
-                            ms_analyzer.analyze_code(code, service_name)
+                    #ms_analyzer = MicroserviceAnalyzer() #already initialized
 
                     # Create visualization options
                     viz_type = st.radio(
@@ -496,17 +502,7 @@ def main():
                     ["API Endpoints", "Service Dependencies", "Service Graph"]
                 )
                 with st.spinner('Analyzing microservices...'):
-                    ms_analyzer = MicroserviceAnalyzer()
-
-                    # Analyze all Java files
-                    for file in java_files:
-                        file_path = os.path.join(project_path, file.path)
-                        # Extract service name from path (assuming standard Spring Boot structure)
-                        service_name = file.path.split('/')[0] if '/' in file.path else 'default'
-
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            code = f.read()
-                            ms_analyzer.analyze_code(code, service_name)
+                    #ms_analyzer = MicroserviceAnalyzer() #already initialized
 
                     if analysis_type == "API Endpoints":
                         api_summary = ms_analyzer.get_api_summary()
@@ -577,7 +573,7 @@ def main():
 
             # Database Tab (moved to a function call)
             with db_tab:
-                analyze_database_schema()
+                analyze_database_schema(java_files)
 
         except Exception as e:
             handle_error(e)
@@ -748,7 +744,7 @@ def generate_call_graph(project_path):
         )
         st.pyplot(fig)
 
-def analyze_database_schema():
+def analyze_database_schema(java_files):
     st.subheader("Database Analysis")
 
     analysis_type = st.radio(
@@ -851,7 +847,7 @@ def display_code_structure_summary(project_structure):
         st.metric("Total Fields", total_fields)
 
 def display_diagrams_summary(java_files):
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 =st.columns(3)
     with col1:
         total_relationships = sum(1 for file in java_files for class_info in file.classes 
                                 if class_info['extends'] or class_info['implements'])
