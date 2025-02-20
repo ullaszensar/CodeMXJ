@@ -1,4 +1,5 @@
 import javalang
+import re
 from typing import Dict, List, Set, Tuple
 import networkx as nx
 from dataclasses import dataclass
@@ -10,6 +11,9 @@ class APIEndpoint:
     service: str
     class_name: str
     method_name: str
+    request_params: List[str]  # Added for parameter tracking
+    response_fields: List[str]  # Added for response tracking
+    legacy_tables: List[str]   # Added for legacy table tracking
 
 @dataclass
 class ServiceDependency:
@@ -17,12 +21,19 @@ class ServiceDependency:
     target: str
     type: str  # 'feign', 'rest', 'kafka', etc.
     details: str
+    api_calls: List[str]  # Added to track specific API calls
 
 class MicroserviceAnalyzer:
     def __init__(self):
         self.api_endpoints = []
         self.service_dependencies = []
         self.service_names = set()
+        self.legacy_table_patterns = [
+            r'FROM\s+([A-Za-z0-9_]+)',
+            r'UPDATE\s+([A-Za-z0-9_]+)',
+            r'INSERT\s+INTO\s+([A-Za-z0-9_]+)',
+            r'DELETE\s+FROM\s+([A-Za-z0-9_]+)'
+        ]
 
     def analyze_code(self, code: str, service_name: str) -> None:
         try:
@@ -38,11 +49,56 @@ class MicroserviceAnalyzer:
         for path, node in tree.filter(javalang.tree.ClassDeclaration):
             if self._has_annotation(node.annotations, "RestController"):
                 base_path = self._get_request_mapping_path(node.annotations)
-                
+
                 for method in node.methods:
                     endpoint = self._extract_endpoint_info(method, base_path, service_name, node.name)
                     if endpoint:
+                        # Analyze method body for legacy table usage
+                        legacy_tables = self._find_legacy_tables(method)
+                        endpoint.legacy_tables = legacy_tables
+
+                        # Extract request parameters
+                        request_params = self._extract_request_parameters(method)
+                        endpoint.request_params = request_params
+
+                        # Extract response fields
+                        response_fields = self._extract_response_fields(method)
+                        endpoint.response_fields = response_fields
+
                         self.api_endpoints.append(endpoint)
+
+    def _extract_request_parameters(self, method) -> List[str]:
+        params = []
+        for param in method.parameters:
+            if self._has_annotation(param.annotations, "RequestParam") or \
+               self._has_annotation(param.annotations, "PathVariable") or \
+               self._has_annotation(param.annotations, "RequestBody"):
+                params.append(f"{param.type.name} {param.name}")
+        return params
+
+    def _extract_response_fields(self, method) -> List[str]:
+        fields = []
+        return_type = method.return_type
+        if return_type and hasattr(return_type, 'name'):
+            # Add basic return type
+            fields.append(return_type.name)
+
+            # Look for ResponseEntity type
+            if return_type.name == 'ResponseEntity':
+                # Try to extract generic type if present
+                if hasattr(return_type, 'arguments') and return_type.arguments:
+                    fields.extend(arg.type.name for arg in return_type.arguments)
+        return fields
+
+    def _find_legacy_tables(self, method) -> List[str]:
+        tables = set()
+        if hasattr(method, 'body') and method.body:
+            code = str(method.body)
+            for pattern in self.legacy_table_patterns:
+                matches = re.finditer(pattern, code, re.IGNORECASE)
+                for match in matches:
+                    tables.add(match.group(1))
+        return list(tables)
 
     def _analyze_feign_clients(self, tree, service_name: str) -> None:
         for path, node in tree.filter(javalang.tree.ClassDeclaration):
@@ -54,7 +110,8 @@ class MicroserviceAnalyzer:
                             source=service_name,
                             target=target_service,
                             type="feign",
-                            details=f"FeignClient interface: {node.name}"
+                            details=f"FeignClient interface: {node.name}",
+                            api_calls=[] # Initialize api_calls list
                         )
                     )
 
@@ -69,7 +126,8 @@ class MicroserviceAnalyzer:
                             source="kafka",
                             target=service_name,
                             type="kafka",
-                            details=f"Listens to topic: {topic}"
+                            details=f"Listens to topic: {topic}",
+                            api_calls=[] # Initialize api_calls list
                         )
                     )
 
@@ -104,7 +162,10 @@ class MicroserviceAnalyzer:
                 method=http_method,
                 service=service_name,
                 class_name=class_name,
-                method_name=method.name
+                method_name=method.name,
+                request_params=[],
+                response_fields=[],
+                legacy_tables=[]
             )
         return None
 
@@ -128,11 +189,11 @@ class MicroserviceAnalyzer:
 
     def generate_service_graph(self) -> Tuple[nx.DiGraph, Dict]:
         G = nx.DiGraph()
-        
+
         # Add all services as nodes
         for service in self.service_names:
             G.add_node(service)
-        
+
         # Add dependencies as edges
         for dep in self.service_dependencies:
             if dep.source not in G:
@@ -160,3 +221,19 @@ class MicroserviceAnalyzer:
                 'handler': endpoint.method_name
             })
         return summary
+
+    def get_api_details(self) -> Dict[str, List[Dict]]:
+        details = {}
+        for endpoint in self.api_endpoints:
+            if endpoint.service not in details:
+                details[endpoint.service] = []
+            details[endpoint.service].append({
+                'path': endpoint.path,
+                'method': endpoint.method,
+                'class': endpoint.class_name,
+                'handler': endpoint.method_name,
+                'request_params': endpoint.request_params,
+                'response_fields': endpoint.response_fields,
+                'legacy_tables': endpoint.legacy_tables
+            })
+        return details

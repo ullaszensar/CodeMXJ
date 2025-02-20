@@ -18,6 +18,8 @@ from io import BytesIO
 from analyzers.microservice_analyzer import MicroserviceAnalyzer
 from analyzers.legacy_table_analyzer import LegacyTableAnalyzer # Add to imports at the top
 from analyzers.demographics_analyzer import DemographicsAnalyzer
+from analyzers.integration_pattern_analyzer import IntegrationPatternAnalyzer
+from analyzers.demographic_pattern_analyzer import DemographicPatternAnalyzer
 
 st.set_page_config(
     page_title="CodeMXJ",
@@ -70,8 +72,9 @@ def main():
         uploaded_file = st.file_uploader("Upload Java Project (ZIP file)", type=["zip"])
 
     # Create tabs for different analysis views
-    structure_tab, diagrams_tab, legacy_tab, demographics_tab, integration_tab, db_tab = st.tabs([
-        "Code Structure", "Diagrams", "Legacy Tables", "Demographics", "Integration Patterns", "Database"
+    structure_tab, diagrams_tab, patterns_tab, demographics_tab, services_tab, api_details_tab, legacy_api_tab, db_tab = st.tabs([
+        "Code Structure", "Diagrams", "Integration Patterns", "Demographics", 
+        "Service Graph", "API Details", "Legacy API Analysis", "Database"
     ])
 
     if uploaded_file is not None:
@@ -125,26 +128,31 @@ def main():
 
                         uml_code, uml_image = uml_generator.generate_class_diagram(all_classes)
 
-                        # Display and download options
+                        # Display diagram first for better visibility
+                        st.image(uml_image, caption="Class Diagram", use_column_width=True)
+
+                        # Add download options in a cleaner layout
                         col1, col2 = st.columns(2)
                         with col1:
                             st.download_button(
-                                "Download Diagram (PNG)",
-                                uml_image,
-                                "class_diagram.png",
-                                "image/png"
+                                label="📥 Download Diagram (PNG)",
+                                data=uml_image,
+                                file_name="class_diagram.png",
+                                mime="image/png",
+                                help="Download the UML diagram as a PNG image"
                             )
                         with col2:
                             st.download_button(
-                                "Download PlantUML Code",
-                                uml_code,
-                                "class_diagram.puml",
-                                "text/plain"
+                                label="📄 Download PlantUML Code",
+                                data=uml_code,
+                                file_name="class_diagram.puml",
+                                mime="text/plain",
+                                help="Download the PlantUML source code"
                             )
 
-                        # Display diagram
-                        st.image(uml_image, caption="Class Diagram", use_column_width=True)
-                        st.code(uml_code, language="text")
+                        # Show PlantUML code in an expandable section
+                        with st.expander("View PlantUML Code"):
+                            st.code(uml_code, language="text")
 
                 elif diagram_type == "Sequence Diagram":
                     method_name = st.text_input("Enter method name to analyze:")
@@ -228,60 +236,161 @@ def main():
                         st.image(plot_image, caption="Call Graph", use_column_width=True)
 
             # Legacy Tables Tab
-            with legacy_tab:
-                st.subheader("Legacy Table Analysis")
-                with st.spinner('Analyzing legacy table usage...'):
-                    legacy_analyzer = LegacyTableAnalyzer()
+            with legacy_api_tab:
+                st.subheader("Legacy API Analysis")
+
+                api_details = ms_analyzer.get_api_details()
+
+                if not api_details:
+                    st.info("No API endpoints found using legacy tables")
+                else:
+                    for service, endpoints in api_details.items():
+                        with st.expander(f"Service: {service}", expanded=True):
+                            for endpoint in endpoints:
+                                if endpoint['legacy_tables']:
+                                    st.markdown(f"""
+                                    ### {endpoint['method']} {endpoint['path']}
+                                    **Handler:** `{endpoint['class']}.{endpoint['handler']}`
+
+                                    **Legacy Tables Used:**
+                                    {', '.join(endpoint['legacy_tables'])}
+
+                                    **Request Parameters:**
+                                    {', '.join(endpoint['request_params']) if endpoint['request_params'] else 'None'}
+
+                                    **Response Fields:**
+                                    {', '.join(endpoint['response_fields']) if endpoint['response_fields'] else 'None'}
+                                    """)
+                                    st.markdown("---")
+
+
+            # Service Graph Tab
+            with services_tab:
+                st.subheader("Service-to-Service Interaction Analysis")
+
+                with st.spinner('Analyzing microservice interactions...'):
+                    ms_analyzer = MicroserviceAnalyzer()
 
                     # Analyze all Java files
                     for file in java_files:
                         file_path = os.path.join(project_path, file.path)
-                        try:
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                code = f.read()
-                                legacy_analyzer.analyze_code(file_path, code)
-                        except Exception as e:
-                            st.error(f"Error analyzing file {file_path}: {str(e)}")
+                        service_name = file.path.split('/')[0] if '/' in file.path else 'default'
 
-                    display_legacy_summary(legacy_analyzer)
-                    usage_summary = legacy_analyzer.get_usage_summary()
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            code = f.read()
+                            ms_analyzer.analyze_code(code, service_name)
 
-                    if not usage_summary:
-                        st.info("No legacy table usage found in the codebase")
-                    else:
-                        # Create a tab for each legacy system
-                        legacy_systems = list(usage_summary.keys())
-                        system_tabs = st.tabs(legacy_systems)
+                    # Create visualization options
+                    viz_type = st.radio(
+                        "Select Visualization",
+                        ["Service Dependency Graph", "API Interaction Map", "Service Matrix"]
+                    )
 
-                        for idx, system in enumerate(legacy_systems):
-                            with system_tabs[idx]:
-                                st.subheader(f"{system} System Tables")
+                    if viz_type == "Service Dependency Graph":
+                        graph, graph_data = ms_analyzer.generate_service_graph()
 
-                                # Create a DataFrame for better visualization
-                                data = []
-                                for usage in usage_summary[system]:
-                                    data.append({
-                                        'Table': usage.table_name,
-                                        'File': usage.file_path,
-                                        'Class': usage.class_name,
-                                        'Method': usage.method_name,
-                                        'Usage Type': usage.usage_type
-                                    })
+                        # Create interactive graph visualization
+                        fig, ax = plt.subplots(figsize=(12, 8))
+                        pos = graph_data['positions']
 
-                                if data:
-                                    df = pd.DataFrame(data)
-                                    st.dataframe(df, use_container_width=True)
+                        # Draw nodes with different colors for different service types
+                        nx.draw_networkx_nodes(graph, pos, 
+                                                node_color='lightblue',
+                                                node_size=2000)
 
-                                    # Add download button for CSV export
-                                    csv = df.to_csv(index=False)
-                                    st.download_button(
-                                        f"Download {system} Usage Data",
-                                        csv,
-                                        f"{system.lower()}_table_usage.csv",
-                                        "text/csv"
-                                    )
-                                else:
-                                    st.info(f"No table usage found for {system}")
+                        # Draw edges with different colors and styles
+                        edge_colors = {
+                            'feign': 'blue',
+                            'rest': 'green',
+                            'kafka': 'red',
+                            'database': 'purple'
+                        }
+
+                        for u, v, data in graph_data['edges']:
+                            edge_type = data.get('type', 'rest')
+                            nx.draw_networkx_edges(graph, pos,
+                                                    edgelist=[(u, v)],
+                                                    edge_color=edge_colors.get(edge_type, 'gray'),
+                                                    style='dashed' if edge_type == 'kafka' else 'solid')
+
+                        # Add labels
+                        nx.draw_networkx_labels(graph, pos)
+
+                        # Save and display the graph
+                        buf = BytesIO()
+                        plt.savefig(buf, format='png', bbox_inches='tight')
+                        buf.seek(0)
+                        st.image(buf, caption="Service Dependency Graph", use_column_width=True)
+
+                        # Display legend
+                        st.markdown("""
+                        **Legend:**
+                        - Blue edges: Feign Client connections
+                        - Green edges: REST API calls
+                        - Red dashed edges: Kafka events
+                        - Purple edges: Database interactions
+                        """)
+
+            # API Details Tab
+            with api_details_tab:
+                st.subheader("API Analysis")
+
+                api_type = st.radio(
+                    "Select API Type",
+                    ["REST APIs", "SOAP Services"]
+                )
+
+                if api_type == "REST APIs":
+                    with st.spinner('Analyzing REST APIs...'):
+                        rest_details = ms_analyzer.get_rest_api_details()
+
+                        if not rest_details:
+                            st.info("No REST APIs found in the project")
+                        else:
+                            for service, apis in rest_details.items():
+                                with st.expander(f"Service: {service}", expanded=True):
+                                    for api in apis:
+                                        st.markdown(f"""
+                                        ### {api['method']} {api['path']}
+                                        **Handler:** `{api['class']}.{api['handler']}`
+
+                                        **Client Type:** {api['client_type']}  
+                                        (RestTemplate/FeignClient/Direct Controller)
+
+                                        **Request Parameters:**
+                                        {', '.join(api['request_params']) if api['request_params'] else 'None'}
+
+                                        **Response Type:**
+                                        {', '.join(api['response_fields']) if api['response_fields'] else 'None'}
+
+                                        **Called Services:**
+                                        {', '.join(api['called_services']) if api['called_services'] else 'None'}
+                                        """)
+                                        st.markdown("---")
+
+                else:  # SOAP Services
+                    with st.spinner('Analyzing SOAP Services...'):
+                        soap_details = ms_analyzer.get_soap_service_details()
+
+                        if not soap_details:
+                            st.info("No SOAP services found in the project")
+                        else:
+                            for service, operations in soap_details.items():
+                                with st.expander(f"Service: {service}", expanded=True):
+                                    for op in operations:
+                                        st.markdown(f"""
+                                        ### {op['operation_name']}
+                                        **Service Interface:** `{op['interface']}`
+
+                                        **WSDL Location:** {op['wsdl_location']}
+
+                                        **Input Parameters:**
+                                        {', '.join(op['input_params']) if op['input_params'] else 'None'}
+
+                                        **Output Type:**
+                                        {op['output_type']}
+                                        """)
+                                        st.markdown("---")
 
             # Demographics Tab
             with demographics_tab:
@@ -340,7 +449,7 @@ def main():
                                     st.info(f"No field usage found for {category}")
 
             # Integration Patterns Tab
-            with integration_tab:
+            with patterns_tab:
                 st.subheader("Integration Patterns Analysis")
                 analysis_type = st.radio(
                     "Select Analysis Type",
@@ -654,7 +763,6 @@ def analyze_database_schema():
                             )
                         else:
                             st.info(f"No table usage found for {system}")
-
 
 
 def display_code_structure_summary(project_structure):
