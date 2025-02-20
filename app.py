@@ -9,7 +9,6 @@ from analyzers.code_parser import JavaCodeParser
 from analyzers.uml_generator import UMLGenerator
 from analyzers.sequence_diagram import SequenceDiagramGenerator
 from analyzers.call_graph import CallGraphAnalyzer
-from analyzers.db_analyzer import DatabaseAnalyzer
 from analyzers.project_analyzer import ProjectAnalyzer
 from utils.helpers import display_code_with_syntax_highlighting, create_download_link, show_progress_bar, handle_error
 from analyzers.java_class import JavaClass # Added import statement
@@ -20,6 +19,7 @@ from analyzers.legacy_table_analyzer import LegacyTableAnalyzer # Add to imports
 from analyzers.demographics_analyzer import DemographicsAnalyzer
 from analyzers.integration_pattern_analyzer import IntegrationPatternAnalyzer
 from analyzers.demographic_pattern_analyzer import DemographicPatternAnalyzer
+import re
 
 st.set_page_config(
     page_title="CodeMXJ",
@@ -341,8 +341,8 @@ def main():
 
                         # Draw nodes with different colors for different service types
                         nx.draw_networkx_nodes(graph, pos, 
-                                                 node_color='lightblue',
-                                                 node_size=2000)
+                                                    node_color='lightblue',
+                                                    node_size=2000)
 
                         # Draw edges with different colors and styles
                         edge_colors = {
@@ -355,9 +355,9 @@ def main():
                         for u, v, data in graph_data['edges']:
                             edge_type = data.get('type', 'rest')
                             nx.draw_networkx_edges(graph, pos,
-                                                     edgelist=[(u, v)],
-                                                     edge_color=edge_colors.get(edge_type, 'gray'),
-                                                     style='dashed' if edge_type == 'kafka' else 'solid')
+                                                        edgelist=[(u, v)],
+                                                        edge_color=edge_colors.get(edge_type, 'gray'),
+                                                        style='dashed' if edge_type == 'kafka' else 'solid')
 
                         # Add labels
                         nx.draw_networkx_labels(graph, pos)
@@ -532,16 +532,16 @@ def main():
 
                             # Draw nodes
                             nx.draw_networkx_nodes(graph, pos, 
-                                                     node_color='lightblue',
-                                                     node_size=2000)
+                                                        node_color='lightblue',
+                                                        node_size=2000)
 
                             # Draw edges with different colors based on type
                             edge_colors = {'feign': 'blue', 'kafka': 'green', 'rest': 'red'}
                             for u, v, data in graph_data['edges']:
                                 edge_type = data.get('type', 'rest')
                                 nx.draw_networkx_edges(graph, pos,
-                                                        edgelist=[(u, v)],
-                                                        edge_color=edge_colors.get(edge_type, 'gray'))
+                                                            edgelist=[(u, v)],
+                                                            edge_color=edge_colors.get(edge_type, 'gray'))
 
                             # Add labels
                             nx.draw_networkx_labels(graph, pos)
@@ -573,7 +573,7 @@ def main():
 
             # Database Tab (moved to a function call)
             with db_tab:
-                analyze_database_schema(java_files)
+                analyze_database_schema(java_files, project_path)
 
         except Exception as e:
             handle_error(e)
@@ -744,93 +744,118 @@ def generate_call_graph(project_path):
         )
         st.pyplot(fig)
 
-def analyze_database_schema(java_files):
-    st.subheader("Database Analysis")
+def analyze_database_schema(java_files, project_path):
+    st.subheader("Legacy Database Analysis")
 
     analysis_type = st.radio(
         "Select Analysis Type",
-        ["Schema Analysis", "Legacy Table Usage"]
+        ["Legacy Systems Overview", "SQL Query Analysis"]
     )
 
-    if analysis_type == "Schema Analysis":
-        with st.spinner('Analyzing database schema...'):
-            analyzer = DatabaseAnalyzer()
+    # Initialize analyzer
+    legacy_analyzer = LegacyTableAnalyzer()
 
+    # Analyze all Java files
+    for file in java_files:
+        file_path = os.path.join(project_path, file.path)
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                code = f.read()
+                legacy_analyzer.analyze_code(file_path, code)
+        except Exception as e:
+            st.error(f"Error analyzing file {file_path}: {str(e)}")
+
+    if analysis_type == "Legacy Systems Overview":
+        usage_summary = legacy_analyzer.get_usage_summary()
+
+        # Display metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Legacy Systems", len(usage_summary))
+        with col2:
+            total_tables = sum(len(tables) for tables in usage_summary.values())
+            st.metric("Total Tables", total_tables)
+        with col3:
+            total_usages = sum(len(usages) for usages in usage_summary.values())
+            st.metric("Total References", total_usages)
+
+        # Create tabs for each legacy system
+        if usage_summary:
+            systems = list(usage_summary.keys())
+            system_tabs = st.tabs(systems)
+
+            for idx, system in enumerate(systems):
+                with system_tabs[idx]:
+                    st.subheader(f"{system} System Tables")
+
+                    # Create DataFrame for visualization
+                    data = []
+                    for usage in usage_summary[system]:
+                        data.append({
+                            'Table': usage.table_name,
+                            'File': usage.file_path,
+                            'Class': usage.class_name,
+                            'Method': usage.method_name,
+                            'Usage Type': usage.usage_type
+                        })
+
+                    if data:
+                        df = pd.DataFrame(data)
+                        st.dataframe(df, use_container_width=True)
+
+                        # Add download button
+                        csv = df.to_csv(index=False)
+                        st.download_button(
+                            f"Download {system} Usage Data",
+                            csv,
+                            f"{system.lower()}_table_usage.csv",
+                            "text/csv"
+                        )
+                    else:
+                        st.info(f"No table usage found for {system}")
+        else:
+            st.info("No legacy system usage found in the codebase")
+
+    else:  # SQL Query Analysis
+        st.subheader("SQL Query Analysis")
+
+        # Group queries by type
+        sql_types = {
+            "SELECT": [],
+            "INSERT": [],
+            "UPDATE": [],
+            "DELETE": []
+        }
+
+        # Analyze all files for SQL queries
+        for file in java_files:
+            file_path = os.path.join(project_path, file.path)
             try:
-                analyzer.connect_to_db()
-                schema_info = analyzer.analyze_schema()
-
-                if not schema_info:
-                    st.warning("No database schema found")
-                    return
-
-                for table_name, table_info in schema_info.items():
-                    with st.expander(f"Table: {table_name}", expanded=True):
-                        st.write("**Columns:**")
-                        for column in table_info['columns']:
-                            st.write(f"- {column['name']} ({column['type']}) {'NULL' if column['nullable'] else 'NOT NULL'}")
-
-                        st.write("**Foreign Keys:**")
-                        for fk in table_info['foreign_keys']:
-                            st.write(f"- References {fk['referred_table']} ({', '.join(fk['referred_columns'])})")
-            except Exception as e:
-                handle_error(e)
-
-    elif analysis_type == "Legacy Table Usage":
-        with st.spinner('Analyzing legacy table usage...'):
-            legacy_analyzer = LegacyTableAnalyzer()
-
-            # Analyze all Java files
-            for file in java_files:
-                file_path = os.path.join(project_path, file.path)
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        code = f.read()
-                        legacy_analyzer.analyze_code(file_path, code)
-                except Exception as e:
-                    st.error(f"Error analyzing file {file_path}: {str(e)}")
-
-            usage_summary = legacy_analyzer.get_usage_summary()
-
-            if not usage_summary:
-                st.info("No legacy table usage found in the codebase")
-                return
-
-            # Create a tab for each legacy system
-            legacy_systems = list(usage_summary.keys())
-            if legacy_systems:
-                system_tabs = st.tabs(legacy_systems)
-
-                for idx, system in enumerate(legacy_systems):
-                    with system_tabs[idx]:
-                        st.subheader(f"{system} System Tables")
-
-                        # Create a DataFrame for better visualization
-                        data = []
-                        for usage in usage_summary[system]:
-                            data.append({
-                                'Table': usage.table_name,
-                                'File': usage.file_path,
-                                'Class': usage.class_name,
-                                'Method': usage.method_name,
-                                'Usage Type': usage.usage_type
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    code = f.read()
+                    # Extract SQL queries using regex patterns
+                    for query_type in sql_types.keys():
+                        pattern = rf'{query_type}\s+[^;]+;'
+                        matches = re.finditer(pattern, code, re.IGNORECASE)
+                        for match in matches:
+                            sql_types[query_type].append({
+                                'query': match.group(0),
+                                'file': file.path
                             })
+            except Exception as e:
+                st.error(f"Error analyzing SQL in file {file_path}: {str(e)}")
 
-                        if data:
-                            df = pd.DataFrame(data)
-                            st.dataframe(df, use_container_width=True)
+        # Create tabs for different query types
+        query_tabs = st.tabs(list(sql_types.keys()))
 
-                            # Add download button for CSV export
-                            csv = df.to_csv(index=False)
-                            st.download_button(
-                                f"Download {system} Usage Data",
-                                csv,
-                                f"{system.lower()}_table_usage.csv",
-                                "text/csv"
-                            )
-                        else:
-                            st.info(f"No table usage found for {system}")
-
+        for idx, (query_type, queries) in enumerate(sql_types.items()):
+            with query_tabs[idx]:
+                if queries:
+                    for q in queries:
+                        with st.expander(f"Query in {q['file']}", expanded=False):
+                            st.code(q['query'], language='sql')
+                else:
+                    st.info(f"No {query_type} queries found")
 
 def display_code_structure_summary(project_structure):
     col1, col2, col3 = st.columns(3)
@@ -839,18 +864,18 @@ def display_code_structure_summary(project_structure):
         st.metric("Total Classes", total_classes)
     with col2:
         total_methods = sum(len(class_info['methods']) for files in project_structure.values() 
-                          for file in files for class_info in file['classes'])
+                            for file in files for class_info in file['classes'])
         st.metric("Total Methods", total_methods)
     with col3:
         total_fields = sum(len(class_info['fields']) for files in project_structure.values() 
-                          for file in files for class_info in file['classes'])
+                            for file in files for class_info in file['classes'])
         st.metric("Total Fields", total_fields)
 
 def display_diagrams_summary(java_files):
     col1, col2, col3 =st.columns(3)
     with col1:
         total_relationships = sum(1 for file in java_files for class_info in file.classes 
-                                if class_info['extends'] or class_info['implements'])
+                               if class_info['extends'] or class_info['implements'])
         st.metric("Class Relationships", total_relationships)
     with col2:
         inheritance_count = sum(1 for file in java_files for class_info in file.classes 
@@ -866,7 +891,7 @@ def display_legacysummary(legacy_analyzer):
     col1, col2, col3 = st.columns(3)
     with col1:
         total_systems = len(usage_summary)
-        st.metric("Legacy Systems", total_systems)
+        st.metric("Legacy Systems",total_systems)
     with col2:
         total_tables = sum(len(tables) for tables in usage_summary.values())
         st.metric("Tables Referenced", total_tables)
