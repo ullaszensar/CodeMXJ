@@ -205,7 +205,46 @@ def main():
                             # Create class dependency graph
                             graph = analyzer.analyze_class_dependencies(combined_code)
 
-                            # Create matplotlib figure
+                            # Display Class Relationships Table
+                            st.subheader("Class Relationships")
+                            relationships_data = []
+                            for source, target, data in graph.edges(data=True):
+                                relationship_type = data.get('type', 'Association')
+                                relationships_data.append({
+                                    'Source Class': source,
+                                    'Target Class': target,
+                                    'Relationship Type': relationship_type,
+                                    'Details': data.get('details', '')
+                                })
+
+                            if relationships_data:
+                                df = pd.DataFrame(relationships_data)
+                                st.dataframe(
+                                    df,
+                                    column_config={
+                                        'Source Class': st.column_config.TextColumn('Source Class'),
+                                        'Target Class': st.column_config.TextColumn('Target Class'),
+                                        'Relationship Type': st.column_config.TextColumn('Type'),
+                                        'Details': st.column_config.TextColumn('Details')
+                                    },
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+
+                                # Add CSV download option
+                                csv = df.to_csv(index=False)
+                                st.download_button(
+                                    "📥 Download Relationships Data (CSV)",
+                                    csv,
+                                    "class_relationships.csv",
+                                    "text/csv",
+                                    help="Download the class relationships data as a CSV file"
+                                )
+                            else:
+                                st.info("No class relationships found in the project")
+
+                            # Create matplotlib figure for visualization
+                            st.subheader("Class Dependency Visualization")
                             fig, ax = plt.subplots(figsize=(12, 8))
                             pos = nx.spring_layout(graph, k=1, iterations=50)
 
@@ -216,12 +255,22 @@ def main():
                                 alpha=0.7
                             )
 
-                            # Draw edges (dependencies)
-                            nx.draw_networkx_edges(graph, pos,
-                                edge_color='gray',
-                                arrows=True,
-                                arrowsize=20
-                            )
+                            # Draw edges (dependencies) with different colors based on relationship type
+                            edge_colors = {
+                                'Inheritance': 'blue',
+                                'Implementation': 'green',
+                                'Association': 'gray',
+                                'Composition': 'red'
+                            }
+
+                            for edge in graph.edges(data=True):
+                                edge_type = edge[2].get('type', 'Association')
+                                nx.draw_networkx_edges(graph, pos,
+                                    edgelist=[(edge[0], edge[1])],
+                                    edge_color=edge_colors.get(edge_type, 'gray'),
+                                    arrows=True,
+                                    arrowsize=20
+                                )
 
                             # Add labels
                             nx.draw_networkx_labels(graph, pos,
@@ -238,7 +287,7 @@ def main():
                             buf.seek(0)
                             plot_image = buf.getvalue()
 
-                            # Display download button
+                            # Display download button for diagram
                             st.download_button(
                                 "📥 Download Class Dependency Graph",
                                 plot_image,
@@ -250,22 +299,32 @@ def main():
                             # Display graph
                             st.image(plot_image, caption="Class Dependency Graph", use_container_width=True)
 
+                            # Display legend
+                            st.markdown("""
+                            **Legend:**
+                            - 🔵 Blue edges: Inheritance relationships
+                            - 🟢 Green edges: Interface implementations
+                            - ⚫ Gray edges: Associations/Dependencies
+                            - 🔴 Red edges: Composition relationships
+                            """)
+
                             # Display statistics
                             st.subheader("Dependency Statistics")
                             stats = analyzer.get_dependency_statistics(graph)
 
-                            col1, col2, col3 = st.columns(3)
+                            col1, col2, col3, col4 = st.columns(4)
                             with col1:
                                 st.metric("Total Classes", stats['total_classes'])
                             with col2:
                                 st.metric("Total Dependencies", stats['total_dependencies'])
                             with col3:
                                 st.metric("Avg Dependencies per Class", f"{stats['avg_dependencies']:.2f}")
+                            with col4:
+                                st.metric("Inheritance Depth", stats.get('max_inheritance_depth', 0))
 
                         except Exception as e:
                             st.error(f"Error generating class dependency graph: {str(e)}")
                             st.info("Please make sure the Java files contain valid code and class definitions.")
-
 
             # Legacy Tables Tab
             with legacy_api_tab:
