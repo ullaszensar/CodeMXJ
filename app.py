@@ -14,6 +14,7 @@ from utils.helpers import display_code_with_syntax_highlighting, create_download
 from analyzers.java_class import JavaClass # Added import statement
 import base64
 from io import BytesIO
+from analyzers.microservice_analyzer import MicroserviceAnalyzer
 
 st.set_page_config(
     page_title="Java Project Analyzer",
@@ -62,8 +63,8 @@ def main():
         uploaded_file = st.file_uploader("Upload Java Project (ZIP file)", type=["zip"])
 
     # Create tabs for different analysis views
-    structure_tab, diagrams_tab, db_tab = st.tabs([
-        "Code Structure", "Diagrams", "Database"
+    structure_tab, diagrams_tab, microservices_tab, db_tab = st.tabs([
+        "Code Structure", "Diagrams", "Microservices", "Database"
     ])
 
     if uploaded_file is not None:
@@ -216,6 +217,95 @@ def main():
 
                         # Display graph
                         st.image(plot_image, caption="Call Graph", use_column_width=True)
+
+            # Microservices Tab
+            with microservices_tab:
+                st.subheader("Microservices Analysis")
+
+                analysis_type = st.radio(
+                    "Select Analysis Type",
+                    ["API Endpoints", "Service Dependencies", "Service Graph"]
+                )
+
+                with st.spinner('Analyzing microservices...'):
+                    ms_analyzer = MicroserviceAnalyzer()
+
+                    # Analyze all Java files
+                    for file in java_files:
+                        file_path = os.path.join(project_path, file.path)
+                        # Extract service name from path (assuming standard Spring Boot structure)
+                        service_name = file.path.split('/')[0] if '/' in file.path else 'default'
+
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            code = f.read()
+                            ms_analyzer.analyze_code(code, service_name)
+
+                    if analysis_type == "API Endpoints":
+                        api_summary = ms_analyzer.get_api_summary()
+                        for service, endpoints in api_summary.items():
+                            with st.expander(f"Service: {service}", expanded=True):
+                                for endpoint in endpoints:
+                                    st.markdown(f"""
+                                    **{endpoint['method']} {endpoint['path']}**  
+                                    Handler: `{endpoint['class']}.{endpoint['handler']}`
+                                    """)
+
+                    elif analysis_type == "Service Dependencies":
+                        for dep in ms_analyzer.service_dependencies:
+                            st.markdown(f"""
+                            **{dep.source}** → **{dep.target}**  
+                            Type: {dep.type}  
+                            Details: {dep.details}
+                            """)
+
+                    elif analysis_type == "Service Graph":
+                        with st.spinner('Generating service graph...'):
+                            graph, graph_data = ms_analyzer.generate_service_graph()
+
+                            # Create matplotlib figure
+                            fig, ax = plt.subplots(figsize=(12, 8))
+                            pos = graph_data['positions']
+
+                            # Draw nodes
+                            nx.draw_networkx_nodes(graph, pos, 
+                                                 node_color='lightblue',
+                                                 node_size=2000)
+
+                            # Draw edges with different colors based on type
+                            edge_colors = {'feign': 'blue', 'kafka': 'green', 'rest': 'red'}
+                            for u, v, data in graph_data['edges']:
+                                edge_type = data.get('type', 'rest')
+                                nx.draw_networkx_edges(graph, pos,
+                                                     edgelist=[(u, v)],
+                                                     edge_color=edge_colors.get(edge_type, 'gray'))
+
+                            # Add labels
+                            nx.draw_networkx_labels(graph, pos)
+
+                            # Save and display the graph
+                            buf = BytesIO()
+                            plt.savefig(buf, format='png', bbox_inches='tight')
+                            buf.seek(0)
+                            plot_image = buf.getvalue()
+
+                            # Download button
+                            st.download_button(
+                                "Download Service Graph (PNG)",
+                                plot_image,
+                                "service_graph.png",
+                                "image/png"
+                            )
+
+                            # Display graph
+                            st.image(plot_image, caption="Service Dependency Graph", use_column_width=True)
+
+                            # Display legend
+                            st.markdown("""
+                            **Legend:**
+                            - Blue edges: Feign Client connections
+                            - Green edges: Kafka connections
+                            - Red edges: REST template calls
+                            """)
 
             # Database Tab
             with db_tab:
