@@ -136,46 +136,8 @@ def main():
 
                 st.divider()
 
-                # Display Project Structure
-                st.subheader("Project Structure")
-                for package, files in project_structure.items():
-                    st.markdown(f"**Package:** {package}")
-                    for file in files:
-                        st.markdown(f"- {file['path']}")
-
-                st.divider()
-
-                # Display Detailed Code Structure
-                st.subheader("Detailed Code Analysis")
-                selected_package = st.selectbox(
-                    "Select Package",
-                    options=list(project_structure.keys())
-                )
-
-                if selected_package:
-                    files = project_structure[selected_package]
-                    for file in files:
-                        st.markdown(f"### File: {file['path']}")
-                        for class_info in file['classes']:
-                            st.markdown(f"#### Class: {class_info['name']}")
-
-                            # Class details
-                            if class_info['extends']:
-                                st.markdown(f"*Extends:* {class_info['extends']}")
-                            if class_info['implements']:
-                                st.markdown(f"*Implements:* {', '.join(class_info['implements'])}")
-
-                            # Display fields and methods in columns
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.markdown("**Fields:**")
-                                for field in class_info['fields']:
-                                    st.markdown(f"- {field}")
-                            with col2:
-                                st.markdown("**Methods:**")
-                                for method in class_info['methods']:
-                                    st.markdown(f"- {method}")
-                            st.markdown("---")
+                # Display Project Structure using the new function
+                display_project_structure(project_structure)
 
 
             # Diagrams Tab
@@ -183,7 +145,7 @@ def main():
                 display_diagrams_summary(java_files)
                 diagram_type = st.radio(
                     "Select Diagram Type",
-                    ["UML Class Diagram", "Sequence Diagram", "Call Graph"]
+                    ["UML Class Diagram", "Class Dependencies"]
                 )
 
                 if diagram_type == "UML Class Diagram":
@@ -224,125 +186,85 @@ def main():
                         with st.expander("View PlantUML Code"):
                             st.code(uml_code, language="text")
 
-                elif diagram_type == "Sequence Diagram":
-                    # Get all available methods
-                    available_methods = []
-                    for file in java_files:
-                        file_path = os.path.join(project_path, file.path)
-                        for class_info in file.classes:
-                            for method in class_info['methods']:
-                                # Create a method identifier with class name
-                                method_id = f"{class_info['name']}.{method}"
-                                available_methods.append(method_id)
-
-                    # Sort methods alphabetically for easier selection
-                    available_methods.sort()
-
-                    if not available_methods:
-                        st.warning("No methods found in the project files")
-                    else:
-                        # Method selection
-                        method_name = st.selectbox(
-                            "Select method to analyze:",
-                            options=available_methods,
-                            format_func=lambda x: x  # Display full method name
-                        )
-
-                        if method_name:
-                            # Extract just the method name from the class.method format
-                            actual_method = method_name.split('.')[-1]
-
-                            with st.spinner('Generating sequence diagram...'):
-                                generator = SequenceDiagramGenerator()
-
-                                # Read all Java files and combine their content
-                                combined_code = ""
-                                for file in java_files:
-                                    file_path = os.path.join(project_path, file.path)
-                                    try:
-                                        with open(file_path, 'r', encoding='utf-8') as f:
-                                            combined_code += f.read() + "\n"
-                                    except Exception as e:
-                                        st.error(f"Error reading file {file.path}: {str(e)}")
-                                        continue
-
-                                try:
-                                    seq_code, seq_image = generator.analyze_method_calls(combined_code, actual_method)
-
-                                    # Display and download options in columns
-                                    col1, col2 = st.columns(2)
-                                    with col1:
-                                        st.download_button(
-                                            "📥 Download Diagram (PNG)",
-                                            seq_image,
-                                            "sequence_diagram.png",
-                                            "image/png",
-                                            help="Download the sequence diagram as a PNG image"
-                                        )
-                                    with col2:
-                                        st.download_button(
-                                            "📄 Download PlantUML Code",
-                                            seq_code,
-                                            "sequence_diagram.puml",
-                                            "text/plain",
-                                            help="Download the PlantUML source code"
-                                        )
-
-                                    # Display diagram
-                                    st.image(seq_image, caption=f"Sequence Diagram for {method_name}", use_container_width=True)
-
-                                    # Show PlantUML code in an expandable section
-                                    with st.expander("View PlantUML Code"):
-                                        st.code(seq_code, language="text")
-
-                                except Exception as e:
-                                    st.error(f"Error generating sequence diagram: {str(e)}")
-                                    st.info("Please make sure the selected method exists and contains valid Java code.")
-
-                elif diagram_type == "Call Graph":
-                    with st.spinner('Generating call graph...'):
+                elif diagram_type == "Class Dependencies":
+                    with st.spinner('Generating class dependency graph...'):
                         analyzer = CallGraphAnalyzer()
 
                         # Analyze all Java files
                         combined_code = ""
                         for file in java_files:
                             file_path = os.path.join(project_path, file.path)
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                combined_code += f.read() + "\n"
+                            try:
+                                with open(file_path, 'r', encoding='utf-8') as f:
+                                    combined_code += f.read() + "\n"
+                            except Exception as e:
+                                st.error(f"Error reading file {file.path}: {str(e)}")
+                                continue
 
-                        graph = analyzer.analyze_calls(combined_code)
-                        graph_data = analyzer.get_graph_data()
+                        try:
+                            # Create class dependency graph
+                            graph = analyzer.analyze_class_dependencies(combined_code)
 
-                        # Create matplotlib figure
-                        fig, ax = plt.subplots(figsize=(10, 10))
-                        nx.draw(
-                            graph,
-                            pos=nx.spring_layout(graph),
-                            with_labels=True,
-                            node_color='lightblue',
-                            node_size=2000,
-                            font_size=8,
-                            font_weight='bold',
-                            arrows=True,
-                            ax=ax
-                        )
+                            # Create matplotlib figure
+                            fig, ax = plt.subplots(figsize=(12, 8))
+                            pos = nx.spring_layout(graph, k=1, iterations=50)
 
-                        # Save plot to BytesIO
-                        buf = BytesIO()
-                        plt.savefig(buf, format='png', bbox_inches='tight')
-                        buf.seek(0)
-                        plot_image = buf.getvalue()
+                            # Draw nodes (classes)
+                            nx.draw_networkx_nodes(graph, pos,
+                                node_color='lightblue',
+                                node_size=3000,
+                                alpha=0.7
+                            )
 
-                        # Display and download options
-                        st.download_button(
-                            "Download Call Graph (PNG)",
-                            plot_image,
-                            "call_graph.png",
-                            "image/png"
-                        )
+                            # Draw edges (dependencies)
+                            nx.draw_networkx_edges(graph, pos,
+                                edge_color='gray',
+                                arrows=True,
+                                arrowsize=20
+                            )
 
-                        # Display graph
-                        st.image(plot_image, caption="Call Graph", use_container_width=True)
+                            # Add labels
+                            nx.draw_networkx_labels(graph, pos,
+                                font_size=8,
+                                font_weight='bold'
+                            )
+
+                            # Add title
+                            plt.title("Class Dependencies", pad=20, fontsize=16)
+
+                            # Save plot to BytesIO
+                            buf = BytesIO()
+                            plt.savefig(buf, format='png', bbox_inches='tight', dpi=300)
+                            buf.seek(0)
+                            plot_image = buf.getvalue()
+
+                            # Display download button
+                            st.download_button(
+                                "📥 Download Class Dependency Graph",
+                                plot_image,
+                                "class_dependencies.png",
+                                "image/png",
+                                help="Download the class dependency graph as a PNG image"
+                            )
+
+                            # Display graph
+                            st.image(plot_image, caption="Class Dependency Graph", use_container_width=True)
+
+                            # Display statistics
+                            st.subheader("Dependency Statistics")
+                            stats = analyzer.get_dependency_statistics(graph)
+
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Total Classes", stats['total_classes'])
+                            with col2:
+                                st.metric("Total Dependencies", stats['total_dependencies'])
+                            with col3:
+                                st.metric("Avg Dependencies per Class", f"{stats['avg_dependencies']:.2f}")
+
+                        except Exception as e:
+                            st.error(f"Error generating class dependency graph: {str(e)}")
+                            st.info("Please make sure the Java files contain valid code and class definitions.")
 
 
             # Legacy Tables Tab
@@ -676,38 +598,84 @@ def display_project_structure(project_structure):
         st.warning("No Java files found in the project")
         return
 
-    total_files = sum(len(files) for files in project_structure.values())
-    total_packages = len(project_structure)
-    st.markdown(f"**Project Summary:**")
-    st.markdown(f"- Total Packages: {total_packages}")
-    st.markdown(f"- Total Java Files: {total_files}")
-
+    # Create data for the tree/table view
+    data = []
     for package, files in project_structure.items():
-        with st.expander(f"Package: {package}", expanded=True):
+        # Package row
+        data.append({
+            'Type': 'Package',
+            'Name': package,
+            'Path': '',
+            'Classes': '',
+            'Description': f'Package containing {len(files)} files'
+        })
+
+        # File rows
+        for file in files:
+            class_names = [cls['name'] for cls in file['classes']]
+            data.append({
+                'Type': 'File',
+                'Name': os.path.basename(file['path']),
+                'Path': file['path'],
+                'Classes': ', '.join(class_names),
+                'Description': file.get('description', '')
+            })
+
+    # Create DataFrame
+    df = pd.DataFrame(data)
+
+    # Display as an interactive table
+    st.dataframe(
+        df,
+        column_config={
+            'Type': st.column_config.TextColumn(
+                'Type',
+                help='Package or File'
+            ),
+            'Name': st.column_config.TextColumn(
+                'Name',
+                help='Name of the package or file'
+            ),
+            'Path': st.column_config.TextColumn(
+                'Path',
+                help='Full path of the file'
+            ),
+            'Classes': st.column_config.TextColumn(
+                'Classes',
+                help='Classes defined in the file'
+            ),
+            'Description': st.column_config.TextColumn(
+                'Description',
+                help='Additional information'
+            )
+        },
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # Display tree view
+    st.subheader("Tree View")
+    for package, files in project_structure.items():
+        with st.expander(f"📦 {package}", expanded=True):
             for file in files:
-                st.markdown(f"**File:** {file['path']}")
-                st.markdown(f"*{file['description']}*")
+                st.markdown(f"📄 **{file['path']}**")
+                if file['classes']:
+                    for class_info in file['classes']:
+                        with st.expander(f"🔷 Class: {class_info['name']}", expanded=False):
+                            if class_info['extends']:
+                                st.markdown(f"*Extends:* `{class_info['extends']}`")
+                            if class_info['implements']:
+                                st.markdown(f"*Implements:* `{', '.join(class_info['implements'])}`")
 
-                for class_info in file['classes']:
-                    st.markdown(f"#### Class: {class_info['name']}")
-
-                    if class_info['extends']:
-                        st.markdown(f"*Extends:* {class_info['extends']}")
-
-                    if class_info['implements']:
-                        st.markdown(f"*Implements:* {', '.join(class_info['implements'])}")
-
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("**Fields:**")
-                        for field in class_info['fields']:
-                            st.markdown(f"- {field}")
-
-                    with col2:
-                        st.markdown("**Methods:**")
-                        for method in class_info['methods']:
-                            st.markdown(f"- {method}")
-                st.markdown("---")
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown("**Fields:**")
+                                for field in class_info['fields']:
+                                    st.markdown(f"- `{field}`")
+                            with col2:
+                                st.markdown("**Methods:**")
+                                for method in class_info['methods']:
+                                    st.markdown(f"- `{method}`")
 
 def display_code_structure(project_structure):
     st.subheader("Code Structure Analysis")
@@ -914,7 +882,7 @@ def analyze_database_schema(java_files, project_path):
                     st.info(f"No {query_type} queries found")
 
 def display_code_structure_summary(project_structure):
-    col1, col2, col3 = st.columns(3)
+    col1,col2, col3 = st.columns(3)
     with col1:
         total_classes = sum(len(file['classes']) for files in project_structure.values() for file in files)
         st.metric("Total Classes", total_classes)
