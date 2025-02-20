@@ -100,9 +100,9 @@ def main():
         """, unsafe_allow_html=True)
 
         # Create tabs for different analysis views
-        structure_tab, diagrams_tab, patterns_tab, demographics_tab, services_tab, api_details_tab, legacy_api_tab, db_tab = st.tabs([
+        structure_tab, diagrams_tab, patterns_tab, demographics_tab, services_tab, api_details_tab, legacy_api_tab, db_tab, analysis_tab = st.tabs([
             "Code Structure", "Diagrams", "Integration Patterns", "Demographics", 
-            "Service Graph", "API Details", "Legacy API Analysis", "Database"
+            "Service Graph", "API Details", "Legacy API Analysis", "Database", "Analysis Summary"
         ])
 
     if uploaded_file is not None:
@@ -119,13 +119,18 @@ def main():
             with st.spinner('Analyzing project structure...'):
                 analyzer = ProjectAnalyzer()
                 ms_analyzer = MicroserviceAnalyzer()  # Initialize here for all tabs to use
+                legacy_analyzer = LegacyTableAnalyzer() # Initialize legacy analyzer here
+                demo_analyzer = DemographicsAnalyzer() # Initialize demo analyzer here
+                int_analyzer = IntegrationPatternAnalyzer() # Initialize integration analyzer here
+                pattern_analyzer = DemographicPatternAnalyzer() # Initialize pattern analyzer here
+
 
                 java_files = analyzer.analyze_project(project_path)
                 if not java_files:
                     st.warning(f"No Java files found in the uploaded project")
                     return
 
-                # Analyze all Java files for microservices
+                # Analyze all Java files for microservices and legacy tables
                 for file in java_files:
                     file_path = os.path.join(project_path, file.path)
                     service_name = file.path.split('/')[0] if '/' in file.path else 'default'
@@ -133,6 +138,11 @@ def main():
                     with open(file_path, 'r', encoding='utf-8') as f:
                         code = f.read()
                         ms_analyzer.analyze_code(code, service_name)
+                        legacy_analyzer.analyze_code(file_path, code) # Analyze for legacy tables
+                        demo_analyzer.analyze_code(file_path, code) # Analyze for demographics
+                        int_analyzer.analyze_code(file_path,code) # Analyze for integration patterns
+                        pattern_analyzer.analyze_code(file_path, code) # Analyze for design patterns
+
 
                 project_structure = analyzer.get_project_structure(java_files)
 
@@ -415,34 +425,59 @@ def main():
 
             # Legacy Tables Tab
             with legacy_api_tab:
-                st.subheader("Legacy API Analysis")
+                st.subheader("Legacy API & Table Analysis")
 
-                try:
-                    api_details = ms_analyzer.get_api_details()
+                # Add tabs within the Legacy API tab
+                legacy_overview, table_list = st.tabs(["API Overview", "Legacy Tables"])
 
-                    if not api_details:
-                        st.info("No API endpoints found using legacy tables")
-                    else:
-                        for service, endpoints in api_details.items():
-                            with st.expander(f"Service: {service}", expanded=True):
-                                for endpoint in endpoints:
-                                    if endpoint['legacy_tables']:
+                with legacy_overview:
+                    try:
+                        api_details = ms_analyzer.get_api_details()
+                        if not api_details:
+                            st.info("No API endpoints found using legacy tables")
+                        else:
+                            for service, endpoints in api_details.items():
+                                with st.expander(f"Service: {service}", expanded=True):
+                                    for endpoint in endpoints:
+                                        if endpoint['legacy_tables']:
+                                            st.markdown(f"""
+                                            ### {endpoint['method']} {endpoint['path']}
+                                            **Handler:** `{endpoint['class']}.{endpoint['handler']}`
+
+                                            **Legacy Tables Used:**
+                                            {', '.join(endpoint['legacy_tables'])}
+
+                                            **Request Parameters:**
+                                            {', '.join(endpoint['request_params']) if endpoint['request_params'] else 'None'}
+
+                                            **Response Fields:**
+                                            {', '.join(endpoint['response_fields']) if endpoint['response_fields'] else 'None'}
+                                            """)
+                                            st.markdown("---")
+                    except Exception as e:
+                        st.error(f"Error analyzing legacy APIs: {str(e)}")
+
+                with table_list:
+                    st.subheader("Legacy Database Tables")
+                    try:
+                        legacy_tables = legacy_analyzer.get_legacy_tables() # Use legacy_analyzer
+                        if legacy_tables:
+                            for schema, tables in legacy_tables.items():
+                                with st.expander(f"Schema: {schema}", expanded=True):
+                                    for table in tables:
                                         st.markdown(f"""
-                                        ### {endpoint['method']} {endpoint['path']}
-                                        **Handler:** `{endpoint['class']}.{endpoint['handler']}`
+                                        ### {table['name']}
+                                        **Description:** {table.get('description', 'No description available')}
 
-                                        **Legacy Tables Used:**
-                                        {', '.join(endpoint['legacy_tables'])}
+                                        **Usage Count:** {table.get('usage_count', 0)} references
 
-                                        **Request Parameters:**
-                                        {', '.join(endpoint['request_params']) if endpoint['request_params'] else 'None'}
-
-                                        **Response Fields:**
-                                        {', '.join(endpoint['response_fields']) if endpoint['response_fields'] else 'None'}
+                                        **Used By Services:**
+                                        {', '.join(table.get('used_by', ['No services']))}
                                         """)
-                                        st.markdown("---")
-                except Exception as e:
-                    st.error(f"Error analyzing legacy APIs: {str(e)}")
+                        else:
+                            st.info("No legacy tables found in the analysis")
+                    except Exception as e:
+                        st.error(f"Error analyzing legacy tables: {str(e)}")
 
             # Service Graph Tab
             with services_tab:
@@ -566,17 +601,7 @@ def main():
             with demographics_tab:
                 st.subheader("Demographics Analysis")
                 with st.spinner('Analyzing demographic data usage...'):
-                    demo_analyzer = DemographicsAnalyzer()
-
-                    # Analyze all Java files
-                    for file in java_files:
-                        file_path = os.path.join(project_path, file.path)
-                        try:
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                code = f.read()
-                                demo_analyzer.analyze_code(file_path, code)
-                        except Exception as e:
-                            st.error(f"Error analyzing file {file_path}: {str(e)}")
+                    #demo_analyzer = DemographicsAnalyzer() # already initialized
 
                     display_demographics_summary(demo_analyzer)
                     usage_summary = demo_analyzer.get_usage_summary()
@@ -698,6 +723,54 @@ def main():
             # Database Tab (moved to a function call)
             with db_tab:
                 analyze_database_schema(java_files, project_path)
+
+            # New Analysis Summary Tab
+            with analysis_tab:
+                st.subheader("Code Analysis Summary")
+
+                # Create three columns for different analysis aspects
+                patterns_col, demographics_col, integration_col = st.columns(3)
+
+                with patterns_col:
+                    st.markdown("### Design Patterns")
+                    patterns = pattern_analyzer.get_patterns()
+                    if patterns:
+                        for pattern in patterns:
+                            st.markdown(f"""
+                            **{pattern['name']}**
+                            - Type: {pattern['type']}
+                            - Usage: {pattern['usage_count']} occurrences
+                            """)
+                    else:
+                        st.info("No specific patterns detected")
+
+                with demographics_col:
+                    st.markdown("### Demographic Data Usage")
+                    demo_patterns = demo_analyzer.get_usage_patterns()
+                    if demo_patterns:
+                        for category, usages in demo_patterns.items():
+                            with st.expander(category):
+                                for usage in usages:
+                                    st.markdown(f"""
+                                    **Field:** {usage['field']}
+                                    - Location: {usage['location']}
+                                    - Usage Type: {usage['type']}
+                                    """)
+                    else:
+                        st.info("No demographic data patterns found")
+
+                with integration_col:
+                    st.markdown("### Integration Patterns")
+                    int_patterns = int_analyzer.get_patterns()
+                    if int_patterns:
+                        for pattern in int_patterns:
+                            st.markdown(f"""
+                            **{pattern['name']}**
+                            - Type: {pattern['type']}
+                            - Components: {pattern['components']}
+                            """)
+                    else:
+                        st.info("No integration patterns detected")
 
         except Exception as e:
             handle_error(e)
