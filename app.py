@@ -101,15 +101,53 @@ def main():
 
             # Project Structure (only in Code Structure tab)
             with structure_tab:
+                # Display Project Overview Tables
                 col1, col2 = st.columns([2, 1])
                 with col1:
                     display_project_overview_table(project_structure)
 
                 st.divider()
 
-                with st.expander("Project Structure", expanded=True):
-                    display_project_structure(project_structure)
-                    display_code_structure(project_structure)
+                # Display Project Structure
+                st.subheader("Project Structure")
+                for package, files in project_structure.items():
+                    st.markdown(f"**Package:** {package}")
+                    for file in files:
+                        st.markdown(f"- {file['path']}")
+
+                st.divider()
+
+                # Display Detailed Code Structure
+                st.subheader("Detailed Code Analysis")
+                selected_package = st.selectbox(
+                    "Select Package",
+                    options=list(project_structure.keys())
+                )
+
+                if selected_package:
+                    files = project_structure[selected_package]
+                    for file in files:
+                        st.markdown(f"### File: {file['path']}")
+                        for class_info in file['classes']:
+                            st.markdown(f"#### Class: {class_info['name']}")
+
+                            # Class details
+                            if class_info['extends']:
+                                st.markdown(f"*Extends:* {class_info['extends']}")
+                            if class_info['implements']:
+                                st.markdown(f"*Implements:* {', '.join(class_info['implements'])}")
+
+                            # Display fields and methods in columns
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown("**Fields:**")
+                                for field in class_info['fields']:
+                                    st.markdown(f"- {field}")
+                            with col2:
+                                st.markdown("**Methods:**")
+                                for method in class_info['methods']:
+                                    st.markdown(f"- {method}")
+                            st.markdown("---")
 
             # Diagrams Tab
             with diagrams_tab:
@@ -827,7 +865,7 @@ def display_diagrams_summary(java_files):
                             if class_info['implements'])
         st.metric("Interface Implementations", interface_count)
 
-def display_legacy_summary(legacy_analyzer):
+def display_legacysummary(legacy_analyzer):
     usage_summary = legacy_analyzer.get_usage_summary()
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -856,7 +894,7 @@ def display_demographics_summary(demo_analyzer):
 def display_integration_summary(ms_analyzer):
     """Display integration summary in a table format"""
     api_summary = ms_analyzer.get_api_summary()
-    col1, col2, col3 = stumns(3)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         total_services = len(api_summary)
