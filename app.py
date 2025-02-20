@@ -93,40 +93,31 @@ def main():
         st.markdown("---")
         st.markdown("""
         <div style='width: 100%;'>
-            <table style='width: 100%; border-collapse: collapse; background-color: #28a745; color: white; border-radius: 5px;'>
-                <tr>
-                    <th colspan='2' style='padding: 10px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.2);'>
-                        Design & Development
-                    </th>
-                </tr>
-                <tr>
-                    <td style='padding: 10px; text-align: center;'>Sr Solution Architect</td>
-                    <td style='padding: 10px; text-align: center;'>Ullas Krishnan</td>
-                </tr>
-                <tr>
-                    <td colspan='2' style='padding: 10px; text-align: center;'>
-                        Zensar Team
-                    </td>
-                </tr>
-            </table>
+            <div style='background-color: #28a745; color: white; padding: 8px; text-align: center; border-radius: 5px 5px 0 0;'>
+                <span style='font-size: 14px;'>Design & Development</span>
+            </div>
+            <div style='background-color: white; padding: 10px; border: 1px solid #28a745; border-radius: 0 0 5px 5px;'>
+                <p style='margin: 0; text-align: center; color: #333;'><strong>Ullas Krishnan</strong></p>
+                <p style='margin: 5px 0; text-align: center; color: #666;'>Sr Solution Architect</p>
+                <p style='margin: 0; text-align: center; color: #666;'>Zensar Diamond Team</p>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Create tabs for different analysis views
-        structure_tab, diagrams_tab, patterns_tab, demographics_tab, services_tab, api_details_tab, legacy_api_tab, db_tab, analysis_tab = st.tabs([
-            "Code Structure", "Diagrams", "Integration Patterns", "Demographics", 
-            "Service Graph", "API Details", "Legacy API Analysis", "Database", "Analysis Summary"
-        ])
+    # Create tabs for different analysis views in main content area
+    structure_tab, diagrams_tab, patterns_tab, demographics_tab, services_tab, api_details_tab, legacy_api_tab, db_tab, analysis_tab = st.tabs([
+        "Code Structure", "Diagrams", "Integration Patterns", "Demographics", 
+        "Service Graph", "API Details", "Legacy API Analysis", "Database", "Analysis Summary"
+    ])
 
     if uploaded_file is not None:
         try:
             # Extract and analyze project
             project_path = extract_project(uploaded_file)
 
-            # Simplified path info in sidebar
-            with st.sidebar:
-                st.write("Project Info:")
-                st.write("✓ Project loaded successfully")
+            # Simplified path info below upload section
+            st.write("Project Info:")
+            st.write("✓ Project loaded successfully")
 
             # Initialize analyzers
             with st.spinner('Analyzing project structure...'):
@@ -899,7 +890,7 @@ def display_project_structure(project_structure):
         files = project_structure[selected_package]
 
         # File selection
-        file_options = [file['path'] for file in files]
+        file_options = [file['path']for file in files]
         selected_file = st.selectbox(
             "Select File",
             options=file_options,
