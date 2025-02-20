@@ -22,6 +22,12 @@ class SequenceDiagramGenerator:
 
             logger.debug(f"Starting analysis for method: {method_name}")
             logger.debug(f"Code length: {len(code)} characters")
+            logger.debug(f"Code sample (first 100 chars): {code[:100]}")
+
+            # Pre-process code to handle potential formatting issues
+            code = code.strip()
+            if not code.endswith("}"):
+                logger.warning("Code might be incomplete or malformed")
 
             try:
                 tree = javalang.parse.parse(code)
@@ -29,6 +35,12 @@ class SequenceDiagramGenerator:
             except Exception as parse_error:
                 logger.error(f"Failed to parse Java code: {str(parse_error)}")
                 logger.debug(f"Parse error details: {traceback.format_exc()}")
+                # Try to get more specific error information
+                try:
+                    tokens = list(javalang.tokenizer.tokenize(code))
+                    logger.debug(f"Tokenization successful, found {len(tokens)} tokens")
+                except Exception as token_error:
+                    logger.error(f"Tokenization failed: {str(token_error)}")
                 raise Exception(f"Failed to parse Java code: {str(parse_error)}")
 
             self.interactions = []
@@ -80,15 +92,15 @@ class SequenceDiagramGenerator:
         except Exception as e:
             logger.error(f"Failed to analyze method calls: {str(e)}")
             logger.debug(f"Full stack trace: {traceback.format_exc()}")
-            raise Exception(f"Failed to analyze method calls: {str(e)}")
+            raise
 
     def _analyze_method_body(self, method_node):
         """Analyze method body for method calls with improved context."""
-        try:
-            if not method_node.body:
-                logger.warning(f"No method body found for {method_node.name}")
-                return
+        if not method_node.body:
+            logger.warning(f"No method body found for {method_node.name}")
+            return
 
+        try:
             for path, node in method_node.filter(javalang.tree.MethodInvocation):
                 try:
                     if hasattr(node, 'qualifier') and node.qualifier:
