@@ -899,7 +899,7 @@ def generate_sequence_diagram(project_path):
 
     generator = SequenceDiagramGenerator()
 
-    method_name = st.text_input("Enter method name to analyze:")
+    method_name = st.textinput("Enter method name to analyze:")
     if method_name:
         with st.spinner('Generating sequence diagram...'):
             sequence_diagram = generator.analyze_method_calls(project_path, method_name)
