@@ -91,15 +91,19 @@ def main():
 
         # Add credits at the bottom of sidebar
         st.markdown("---")
-        st.markdown("### Design & Development")
-        st.markdown("Sr Solution Architect, Ullas Krishnan")
-        st.markdown("with love ❤️ Zensar Team")
+        st.markdown("""
+        <div style='padding: 10px; background-color: rgba(0, 180, 216, 0.1); border: 1px solid rgba(0, 180, 216, 0.2); border-radius: 5px;'>
+            <h3 style='color: #00B4D8; margin: 0 0 10px 0;'>Design & Development</h3>
+            <p style='color: #0096C7; margin: 0 0 5px 0;'>Sr Solution Architect, Ullas Krishnan</p>
+            <p style='color: #0096C7; margin: 0;'>Zensar Team</p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # Create tabs for different analysis views
-    structure_tab, diagrams_tab, patterns_tab, demographics_tab, services_tab, api_details_tab, legacy_api_tab, db_tab = st.tabs([
-        "Code Structure", "Diagrams", "Integration Patterns", "Demographics", 
-        "Service Graph", "API Details", "Legacy API Analysis", "Database"
-    ])
+        # Create tabs for different analysis views
+        structure_tab, diagrams_tab, patterns_tab, demographics_tab, services_tab, api_details_tab, legacy_api_tab, db_tab = st.tabs([
+            "Code Structure", "Diagrams", "Integration Patterns", "Demographics", 
+            "Service Graph", "API Details", "Legacy API Analysis", "Database"
+        ])
 
     if uploaded_file is not None:
         try:
@@ -904,8 +908,8 @@ def generate_sequence_diagram(project_path):
 
     generator = SequenceDiagramGenerator()
 
-    method_name = st.textinput("Enter method name toanalyze:")
-    if methodname:
+    method_name = st.text_input("Enter method name toanalyze:")
+    if method_name: # Corrected variable name
         with st.spinner('Generating sequence diagram...'):
             sequence_diagram = generator.analyze_method_calls(project_path, method_name)
             st.text_area("PlantUML Sequence Diagram", sequence_diagram, height=300)
