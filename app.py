@@ -11,6 +11,7 @@ from analyzers.call_graph import CallGraphAnalyzer
 from analyzers.db_analyzer import DatabaseAnalyzer
 from analyzers.project_analyzer import ProjectAnalyzer
 from utils.helpers import display_code_with_syntax_highlighting, create_download_link, show_progress_bar, handle_error
+from analyzers.java_class import JavaClass # Added import statement
 
 st.set_page_config(
     page_title="Java Project Analyzer",
@@ -190,7 +191,7 @@ def generate_project_uml(java_files):
 
         for file in java_files:
             for class_info in file.classes:
-                java_class = JavaCodeParser.dict_to_class(class_info)
+                java_class = JavaClass.from_dict(class_info)
                 all_classes.append(java_class)
 
         uml_code = uml_generator.generate_class_diagram(all_classes)
