@@ -11,21 +11,25 @@ class APIEndpoint:
     service: str
     class_name: str
     method_name: str
-    request_params: List[str]  # Added for parameter tracking
-    response_fields: List[str]  # Added for response tracking
-    legacy_tables: List[str]   # Added for legacy table tracking
+    request_params: List[str]
+    response_fields: List[str]
+    legacy_tables: List[str]
+    client_type: str = "Direct Controller"  # Can be RestTemplate/FeignClient/Direct Controller
+    called_services: List[str] = None  # Track services called by this endpoint
 
 @dataclass
-class ServiceDependency:
-    source: str
-    target: str
-    type: str  # 'feign', 'rest', 'kafka', etc.
-    details: str
-    api_calls: List[str]  # Added to track specific API calls
+class SOAPOperation:
+    operation_name: str
+    interface: str
+    wsdl_location: str
+    input_params: List[str]
+    output_type: str
+    service: str
 
 class MicroserviceAnalyzer:
     def __init__(self):
         self.api_endpoints = []
+        self.soap_operations = []
         self.service_dependencies = []
         self.service_names = set()
         self.legacy_table_patterns = [
@@ -40,6 +44,7 @@ class MicroserviceAnalyzer:
             tree = javalang.parse.parse(code)
             self._analyze_rest_controllers(tree, service_name)
             self._analyze_feign_clients(tree, service_name)
+            self._analyze_soap_services(tree, service_name)
             self._analyze_service_dependencies(tree, service_name)
             self.service_names.add(service_name)
         except Exception as e:
@@ -65,7 +70,91 @@ class MicroserviceAnalyzer:
                         response_fields = self._extract_response_fields(method)
                         endpoint.response_fields = response_fields
 
+                        # Analyze service calls within the method
+                        called_services = self._analyze_service_calls(method)
+                        endpoint.called_services = called_services
+
                         self.api_endpoints.append(endpoint)
+
+    def _analyze_soap_services(self, tree, service_name: str) -> None:
+        for path, node in tree.filter(javalang.tree.ClassDeclaration):
+            if self._has_annotation(node.annotations, "WebService"):
+                wsdl_location = self._get_wsdl_location(node.annotations)
+
+                for method in node.methods:
+                    if self._has_annotation(method.annotations, "WebMethod"):
+                        operation = SOAPOperation(
+                            operation_name=method.name,
+                            interface=node.name,
+                            wsdl_location=wsdl_location or "Not specified",
+                            input_params=self._extract_soap_parameters(method),
+                            output_type=str(method.return_type) if method.return_type else "void",
+                            service=service_name
+                        )
+                        self.soap_operations.append(operation)
+
+    def _analyze_service_calls(self, method) -> List[str]:
+        called_services = []
+        if hasattr(method, 'body') and method.body:
+            # Look for RestTemplate calls
+            for path, node in method.filter(javalang.tree.MethodInvocation):
+                if hasattr(node, 'qualifier') and 'restTemplate' in str(node.qualifier).lower():
+                    called_services.append("RestTemplate Call")
+
+            # Look for Feign client calls
+            for path, node in method.filter(javalang.tree.FieldDeclaration):
+                if node.declarators and hasattr(node.type, 'name'):
+                    if self._is_feign_client(node.type.name):
+                        called_services.append(f"FeignClient: {node.type.name}")
+
+        return called_services
+
+    def _extract_soap_parameters(self, method) -> List[str]:
+        params = []
+        for param in method.parameters:
+            param_type = str(param.type)
+            params.append(f"{param_type} {param.name}")
+        return params
+
+    def _get_wsdl_location(self, annotations) -> str:
+        for annotation in annotations:
+            if annotation.name == "WebService":
+                if hasattr(annotation, 'element') and annotation.element:
+                    for elem in annotation.element:
+                        if elem.name == "wsdlLocation" and elem.value.value:
+                            return elem.value.value
+        return None
+
+    def get_rest_api_details(self) -> Dict[str, List[Dict]]:
+        details = {}
+        for endpoint in self.api_endpoints:
+            if endpoint.service not in details:
+                details[endpoint.service] = []
+            details[endpoint.service].append({
+                'path': endpoint.path,
+                'method': endpoint.method,
+                'class': endpoint.class_name,
+                'handler': endpoint.method_name,
+                'client_type': endpoint.client_type,
+                'request_params': endpoint.request_params,
+                'response_fields': endpoint.response_fields,
+                'called_services': endpoint.called_services or []
+            })
+        return details
+
+    def get_soap_service_details(self) -> Dict[str, List[Dict]]:
+        details = {}
+        for operation in self.soap_operations:
+            if operation.service not in details:
+                details[operation.service] = []
+            details[operation.service].append({
+                'operation_name': operation.operation_name,
+                'interface': operation.interface,
+                'wsdl_location': operation.wsdl_location,
+                'input_params': operation.input_params,
+                'output_type': operation.output_type
+            })
+        return details
 
     def _extract_request_parameters(self, method) -> List[str]:
         params = []
@@ -222,18 +311,7 @@ class MicroserviceAnalyzer:
             })
         return summary
 
-    def get_api_details(self) -> Dict[str, List[Dict]]:
-        details = {}
-        for endpoint in self.api_endpoints:
-            if endpoint.service not in details:
-                details[endpoint.service] = []
-            details[endpoint.service].append({
-                'path': endpoint.path,
-                'method': endpoint.method,
-                'class': endpoint.class_name,
-                'handler': endpoint.method_name,
-                'request_params': endpoint.request_params,
-                'response_fields': endpoint.response_fields,
-                'legacy_tables': endpoint.legacy_tables
-            })
-        return details
+
+    def _is_feign_client(self, type_name: str) -> bool:
+        # Add a simple check to identify feign clients more robustly
+        return "FeignClient" in type_name

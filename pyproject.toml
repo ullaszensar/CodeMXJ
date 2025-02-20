@@ -8,6 +8,7 @@ dependencies = [
     "matplotlib>=3.10.0",
     "networkx>=3.4.2",
     "pandas>=2.2.3",
+    "plantuml-markdown>=3.11.1",
     "plantuml>=0.3.0",
     "requests>=2.32.3",
     "sqlalchemy>=2.0.38",
