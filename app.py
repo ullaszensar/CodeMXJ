@@ -66,8 +66,8 @@ def main():
         uploaded_file = st.file_uploader("Upload Java Project (ZIP file)", type=["zip"])
 
     # Create tabs for different analysis views
-    structure_tab, diagrams_tab, legacy_tab, demographics_tab, integration_tab = st.tabs([
-        "Code Structure", "Diagrams", "Legacy Tables", "Demographics", "Integration Patterns"
+    structure_tab, diagrams_tab, legacy_tab, demographics_tab, integration_tab, db_tab = st.tabs([
+        "Code Structure", "Diagrams", "Legacy Tables", "Demographics", "Integration Patterns", "Database"
     ])
 
     if uploaded_file is not None:
@@ -98,10 +98,12 @@ def main():
 
             # Structure Analysis Tab
             with structure_tab:
+                display_code_structure_summary(project_structure)
                 display_code_structure(project_structure)
 
             # Diagrams Tab
             with diagrams_tab:
+                display_diagrams_summary(java_files)
                 diagram_type = st.radio(
                     "Select Diagram Type",
                     ["UML Class Diagram", "Sequence Diagram", "Call Graph"]
@@ -224,7 +226,6 @@ def main():
             # Legacy Tables Tab
             with legacy_tab:
                 st.subheader("Legacy Table Analysis")
-
                 with st.spinner('Analyzing legacy table usage...'):
                     legacy_analyzer = LegacyTableAnalyzer()
 
@@ -238,6 +239,7 @@ def main():
                         except Exception as e:
                             st.error(f"Error analyzing file {file_path}: {str(e)}")
 
+                    display_legacy_summary(legacy_analyzer)
                     usage_summary = legacy_analyzer.get_usage_summary()
 
                     if not usage_summary:
@@ -280,7 +282,6 @@ def main():
             # Demographics Tab
             with demographics_tab:
                 st.subheader("Demographics Analysis")
-
                 with st.spinner('Analyzing demographic data usage...'):
                     demo_analyzer = DemographicsAnalyzer()
 
@@ -294,6 +295,7 @@ def main():
                         except Exception as e:
                             st.error(f"Error analyzing file {file_path}: {str(e)}")
 
+                    display_demographics_summary(demo_analyzer)
                     usage_summary = demo_analyzer.get_usage_summary()
 
                     if not usage_summary:
@@ -336,12 +338,10 @@ def main():
             # Integration Patterns Tab
             with integration_tab:
                 st.subheader("Integration Patterns Analysis")
-
                 analysis_type = st.radio(
                     "Select Analysis Type",
                     ["API Endpoints", "Service Dependencies", "Service Graph"]
                 )
-
                 with st.spinner('Analyzing microservices...'):
                     ms_analyzer = MicroserviceAnalyzer()
 
@@ -355,6 +355,7 @@ def main():
                             code = f.read()
                             ms_analyzer.analyze_code(code, service_name)
 
+                    display_integration_summary(ms_analyzer)
                     if analysis_type == "API Endpoints":
                         api_summary = ms_analyzer.get_api_summary()
                         for service, endpoints in api_summary.items():
@@ -649,6 +650,76 @@ def analyze_database_schema():
                             )
                         else:
                             st.info(f"No table usage found for {system}")
+
+
+
+def display_code_structure_summary(project_structure):
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        total_classes = sum(len(file['classes']) for files in project_structure.values() for file in files)
+        st.metric("Total Classes", total_classes)
+    with col2:
+        total_methods = sum(len(class_info['methods']) for files in project_structure.values() 
+                          for file in files for class_info in file['classes'])
+        st.metric("Total Methods", total_methods)
+    with col3:
+        total_fields = sum(len(class_info['fields']) for files in project_structure.values() 
+                          for file in files for class_info in file['classes'])
+        st.metric("Total Fields", total_fields)
+
+def display_diagrams_summary(java_files):
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        total_relationships = sum(1 for file in java_files for class_info in file.classes 
+                                if class_info['extends'] or class_info['implements'])
+        st.metric("Class Relationships", total_relationships)
+    with col2:
+        inheritance_count = sum(1 for file in java_files for class_info in file.classes 
+                              if class_info['extends'])
+        st.metric("Inheritance Links", inheritance_count)
+    with col3:
+        interface_count = sum(1 for file in java_files for class_info in file.classes 
+                            if class_info['implements'])
+        st.metric("Interface Implementations", interface_count)
+
+def display_legacy_summary(legacy_analyzer):
+    usage_summary = legacy_analyzer.get_usage_summary()
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        total_systems = len(usage_summary)
+        st.metric("Legacy Systems", total_systems)
+    with col2:
+        total_tables = sum(len(tables) for tables in usage_summary.values())
+        st.metric("Tables Referenced", total_tables)
+    with col3:
+        total_usages = sum(len(usage) for usage in usage_summary.values())
+        st.metric("Total References", total_usages)
+
+def display_demographics_summary(demo_analyzer):
+    usage_summary = demo_analyzer.get_usage_summary()
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        total_categories = len(usage_summary)
+        st.metric("Demographic Categories", total_categories)
+    with col2:
+        total_fields = sum(len(fields) for fields in usage_summary.values())
+        st.metric("Fields Tracked", total_fields)
+    with col3:
+        total_usages = sum(len(usage) for usage in usage_summary.values())
+        st.metric("Total References", total_usages)
+
+def display_integration_summary(ms_analyzer):
+    api_summary = ms_analyzer.get_api_summary()
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        total_services = len(api_summary)
+        st.metric("Microservices", total_services)
+    with col2:
+        total_endpoints = sum(len(endpoints) for endpoints in api_summary.values())
+        st.metric("API Endpoints", total_endpoints)
+    with col3:
+        total_dependencies = len(ms_analyzer.service_dependencies)
+        st.metric("Service Dependencies", total_dependencies)
 
 
 if __name__ == "__main__":
