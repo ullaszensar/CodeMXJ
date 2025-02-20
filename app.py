@@ -17,6 +17,7 @@ import base64
 from io import BytesIO
 from analyzers.microservice_analyzer import MicroserviceAnalyzer
 from analyzers.legacy_table_analyzer import LegacyTableAnalyzer # Add to imports at the top
+from analyzers.demographics_analyzer import DemographicsAnalyzer
 
 st.set_page_config(
     page_title="Java Project Analyzer",
@@ -65,8 +66,8 @@ def main():
         uploaded_file = st.file_uploader("Upload Java Project (ZIP file)", type=["zip"])
 
     # Create tabs for different analysis views
-    structure_tab, diagrams_tab, microservices_tab, db_tab = st.tabs([
-        "Code Structure", "Diagrams", "Microservices", "Database"
+    structure_tab, diagrams_tab, legacy_tab, demographics_tab, integration_tab = st.tabs([
+        "Code Structure", "Diagrams", "Legacy Tables", "Demographics", "Integration Patterns"
     ])
 
     if uploaded_file is not None:
@@ -220,9 +221,121 @@ def main():
                         # Display graph
                         st.image(plot_image, caption="Call Graph", use_column_width=True)
 
-            # Microservices Tab
-            with microservices_tab:
-                st.subheader("Microservices Analysis")
+            # Legacy Tables Tab
+            with legacy_tab:
+                st.subheader("Legacy Table Analysis")
+
+                with st.spinner('Analyzing legacy table usage...'):
+                    legacy_analyzer = LegacyTableAnalyzer()
+
+                    # Analyze all Java files
+                    for file in java_files:
+                        file_path = os.path.join(project_path, file.path)
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                code = f.read()
+                                legacy_analyzer.analyze_code(file_path, code)
+                        except Exception as e:
+                            st.error(f"Error analyzing file {file_path}: {str(e)}")
+
+                    usage_summary = legacy_analyzer.get_usage_summary()
+
+                    if not usage_summary:
+                        st.info("No legacy table usage found in the codebase")
+                    else:
+                        # Create a tab for each legacy system
+                        legacy_systems = list(usage_summary.keys())
+                        system_tabs = st.tabs(legacy_systems)
+
+                        for idx, system in enumerate(legacy_systems):
+                            with system_tabs[idx]:
+                                st.subheader(f"{system} System Tables")
+
+                                # Create a DataFrame for better visualization
+                                data = []
+                                for usage in usage_summary[system]:
+                                    data.append({
+                                        'Table': usage.table_name,
+                                        'File': usage.file_path,
+                                        'Class': usage.class_name,
+                                        'Method': usage.method_name,
+                                        'Usage Type': usage.usage_type
+                                    })
+
+                                if data:
+                                    df = pd.DataFrame(data)
+                                    st.dataframe(df, use_container_width=True)
+
+                                    # Add download button for CSV export
+                                    csv = df.to_csv(index=False)
+                                    st.download_button(
+                                        f"Download {system} Usage Data",
+                                        csv,
+                                        f"{system.lower()}_table_usage.csv",
+                                        "text/csv"
+                                    )
+                                else:
+                                    st.info(f"No table usage found for {system}")
+
+            # Demographics Tab
+            with demographics_tab:
+                st.subheader("Demographics Analysis")
+
+                with st.spinner('Analyzing demographic data usage...'):
+                    demo_analyzer = DemographicsAnalyzer()
+
+                    # Analyze all Java files
+                    for file in java_files:
+                        file_path = os.path.join(project_path, file.path)
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                code = f.read()
+                                demo_analyzer.analyze_code(file_path, code)
+                        except Exception as e:
+                            st.error(f"Error analyzing file {file_path}: {str(e)}")
+
+                    usage_summary = demo_analyzer.get_usage_summary()
+
+                    if not usage_summary:
+                        st.info("No demographic data usage found in the codebase")
+                    else:
+                        # Create a tab for each demographic category
+                        categories = list(usage_summary.keys())
+                        category_tabs = st.tabs(categories)
+
+                        for idx, category in enumerate(categories):
+                            with category_tabs[idx]:
+                                st.subheader(f"{category} Fields")
+
+                                # Create a DataFrame for better visualization
+                                data = []
+                                for usage in usage_summary[category]:
+                                    data.append({
+                                        'Field': usage.field_name,
+                                        'File': usage.file_path,
+                                        'Class': usage.class_name,
+                                        'Method': usage.method_name,
+                                        'Usage Type': usage.usage_type
+                                    })
+
+                                if data:
+                                    df = pd.DataFrame(data)
+                                    st.dataframe(df, use_container_width=True)
+
+                                    # Add download button for CSV export
+                                    csv = df.to_csv(index=False)
+                                    st.download_button(
+                                        f"Download {category} Usage Data",
+                                        csv,
+                                        f"{category.lower()}_demographics.csv",
+                                        "text/csv"
+                                    )
+                                else:
+                                    st.info(f"No field usage found for {category}")
+
+            # Integration Patterns Tab
+            with integration_tab:
+                st.subheader("Integration Patterns Analysis")
 
                 analysis_type = st.radio(
                     "Select Analysis Type",
@@ -309,7 +422,7 @@ def main():
                             - Red edges: REST template calls
                             """)
 
-            # Database Tab
+            # Database Tab (moved to a function call)
             with db_tab:
                 analyze_database_schema()
 
