@@ -99,14 +99,17 @@ def main():
 
                 project_structure = analyzer.get_project_structure(java_files)
 
-            # Project Structure (always visible in main content)
-            st.header("Project Overview")
-            display_project_structure(project_structure)
-
-            # Structure Analysis Tab
+            # Project Structure (only in Code Structure tab)
             with structure_tab:
-                display_code_structure_summary(project_structure)
-                display_code_structure(project_structure)
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    display_project_overview_table(project_structure)
+
+                st.divider()
+
+                with st.expander("Project Structure", expanded=True):
+                    display_project_structure(project_structure)
+                    display_code_structure(project_structure)
 
             # Diagrams Tab
             with diagrams_tab:
@@ -129,7 +132,7 @@ def main():
                         uml_code, uml_image = uml_generator.generate_class_diagram(all_classes)
 
                         # Display diagram first for better visibility
-                        st.image(uml_image, caption="Class Diagram", use_column_width=True)
+                        st.image(uml_image, caption="Class Diagram", use_container_width=True)
 
                         # Add download options in a cleaner layout
                         col1, col2 = st.columns(2)
@@ -187,7 +190,7 @@ def main():
                                 )
 
                             # Display diagram
-                            st.image(seq_image, caption="Sequence Diagram", use_column_width=True)
+                            st.image(seq_image, caption="Sequence Diagram", use_container_width=True)
                             st.code(seq_code, language="text")
 
                 elif diagram_type == "Call Graph":
@@ -233,7 +236,7 @@ def main():
                         )
 
                         # Display graph
-                        st.image(plot_image, caption="Call Graph", use_column_width=True)
+                        st.image(plot_image, caption="Call Graph", use_container_width=True)
 
             # Legacy Tables Tab
             with legacy_api_tab:
@@ -262,7 +265,6 @@ def main():
                                     {', '.join(endpoint['response_fields']) if endpoint['response_fields'] else 'None'}
                                     """)
                                     st.markdown("---")
-
 
             # Service Graph Tab
             with services_tab:
@@ -295,8 +297,8 @@ def main():
 
                         # Draw nodes with different colors for different service types
                         nx.draw_networkx_nodes(graph, pos, 
-                                                node_color='lightblue',
-                                                node_size=2000)
+                                                 node_color='lightblue',
+                                                 node_size=2000)
 
                         # Draw edges with different colors and styles
                         edge_colors = {
@@ -309,9 +311,9 @@ def main():
                         for u, v, data in graph_data['edges']:
                             edge_type = data.get('type', 'rest')
                             nx.draw_networkx_edges(graph, pos,
-                                                    edgelist=[(u, v)],
-                                                    edge_color=edge_colors.get(edge_type, 'gray'),
-                                                    style='dashed' if edge_type == 'kafka' else 'solid')
+                                                     edgelist=[(u, v)],
+                                                     edge_color=edge_colors.get(edge_type, 'gray'),
+                                                     style='dashed' if edge_type == 'kafka' else 'solid')
 
                         # Add labels
                         nx.draw_networkx_labels(graph, pos)
@@ -320,7 +322,7 @@ def main():
                         buf = BytesIO()
                         plt.savefig(buf, format='png', bbox_inches='tight')
                         buf.seek(0)
-                        st.image(buf, caption="Service Dependency Graph", use_column_width=True)
+                        st.image(buf, caption="Service Dependency Graph", use_container_width=True)
 
                         # Display legend
                         st.markdown("""
@@ -468,7 +470,6 @@ def main():
                             code = f.read()
                             ms_analyzer.analyze_code(code, service_name)
 
-                    display_integration_summary(ms_analyzer)
                     if analysis_type == "API Endpoints":
                         api_summary = ms_analyzer.get_api_summary()
                         for service, endpoints in api_summary.items():
@@ -505,8 +506,8 @@ def main():
                             for u, v, data in graph_data['edges']:
                                 edge_type = data.get('type', 'rest')
                                 nx.draw_networkx_edges(graph, pos,
-                                                         edgelist=[(u, v)],
-                                                         edge_color=edge_colors.get(edge_type, 'gray'))
+                                                        edgelist=[(u, v)],
+                                                        edge_color=edge_colors.get(edge_type, 'gray'))
 
                             # Add labels
                             nx.draw_networkx_labels(graph, pos)
@@ -526,7 +527,7 @@ def main():
                             )
 
                             # Display graph
-                            st.image(plot_image, caption="Service Dependency Graph", use_column_width=True)
+                            st.image(plot_image, caption="Service Dependency Graph", use_container_width=True)
 
                             # Display legend
                             st.markdown("""
@@ -545,6 +546,38 @@ def main():
             st.error(f"Error details: {str(e)}")
     else:
         st.info("Please upload a Java project (ZIP file) to begin analysis")
+
+def display_project_overview_table(project_structure):
+    """Display project overview in a table format"""
+    # Calculate overview metrics
+    total_files = sum(len(files) for files in project_structure.values())
+    total_packages = len(project_structure)
+    total_controllers = 0
+    controller_list = []
+
+    # Count controllers and collect controller names
+    for package, files in project_structure.items():
+        for file in files:
+            for class_info in file['classes']:
+                if any(ann.get('name') == 'RestController' for ann in class_info.get('annotations', [])):
+                    total_controllers += 1
+                    controller_list.append(f"{package}.{class_info['name']}")
+
+    # Create overview table
+    overview_data = {
+        'Metric': ['Total Packages', 'Total Java Files', 'Total Controllers'],
+        'Count': [total_packages, total_files, total_controllers]
+    }
+
+    # Create and display tables
+    st.subheader("Project Overview")
+    df_overview = pd.DataFrame(overview_data)
+    st.dataframe(df_overview, use_container_width=True)
+
+    if controller_list:
+        st.subheader("Controllers")
+        df_controllers = pd.DataFrame({'Controller': controller_list})
+        st.dataframe(df_controllers, use_container_width=True)
 
 def display_project_structure(project_structure):
     st.subheader("Project Structure")
@@ -821,18 +854,24 @@ def display_demographics_summary(demo_analyzer):
         st.metric("Total References", total_usages)
 
 def display_integration_summary(ms_analyzer):
+    """Display integration summary in a table format"""
     api_summary = ms_analyzer.get_api_summary()
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = stumns(3)
+
     with col1:
         total_services = len(api_summary)
         st.metric("Microservices", total_services)
+
     with col2:
         total_endpoints = sum(len(endpoints) for endpoints in api_summary.values())
-        st.metric("API Endpoints", total_endpoints)
-    with col3:
-        total_dependencies = len(ms_analyzer.service_dependencies)
-        st.metric("Service Dependencies", total_dependencies)
+        st.metric("Total Endpoints", total_endpoints)
 
+    with col3:
+        total_controllers = sum(
+            len([ep for ep in endpoints if ep['handler']])
+            for endpoints in api_summary.values()
+        )
+        st.metric("Total Controllers", total_controllers)
 
 if __name__ == "__main__":
     main()
