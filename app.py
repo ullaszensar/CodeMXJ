@@ -89,6 +89,12 @@ def main():
             help="Upload a ZIP file containing Java source files (.java)"
         )
 
+        # Add credits at the bottom of sidebar
+        st.markdown("---")
+        st.markdown("### Design & Development")
+        st.markdown("Sr Solution Architect, Ullas Krishnan")
+        st.markdown("with love ❤️ Zensar Team")
+
     # Create tabs for different analysis views
     structure_tab, diagrams_tab, patterns_tab, demographics_tab, services_tab, api_details_tab, legacy_api_tab, db_tab = st.tabs([
         "Code Structure", "Diagrams", "Integration Patterns", "Demographics", 
@@ -100,11 +106,10 @@ def main():
             # Extract and analyze project
             project_path = extract_project(uploaded_file)
 
-            # Debug information in sidebar
+            # Simplified path info in sidebar
             with st.sidebar:
-                st.write("Debug Info:")
-                st.write(f"Project path: {project_path}")
-                st.write(f"Java files found: {st.session_state.get('project_files', [])}")
+                st.write("Project Info:")
+                st.write("✓ Project loaded successfully")
 
             # Initialize analyzers
             with st.spinner('Analyzing project structure...'):
@@ -113,7 +118,7 @@ def main():
 
                 java_files = analyzer.analyze_project(project_path)
                 if not java_files:
-                    st.warning(f"No Java files found in {project_path}")
+                    st.warning(f"No Java files found in the uploaded project")
                     return
 
                 # Analyze all Java files for microservices
@@ -899,8 +904,8 @@ def generate_sequence_diagram(project_path):
 
     generator = SequenceDiagramGenerator()
 
-    method_name = st.textinput("Enter method name to analyze:")
-    if method_name:
+    method_name = st.textinput("Enter method name toanalyze:")
+    if methodname:
         with st.spinner('Generating sequence diagram...'):
             sequence_diagram = generator.analyze_method_calls(project_path, method_name)
             st.text_area("PlantUML Sequence Diagram", sequence_diagram, height=300)
