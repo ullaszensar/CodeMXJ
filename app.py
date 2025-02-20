@@ -42,19 +42,18 @@ def main():
             project_path = extract_project(uploaded_file)
             analyzer = ProjectAnalyzer()
 
-            show_progress_bar("Analyzing project structure")
-            java_files = analyzer.analyze_project(project_path)
-            project_structure = analyzer.get_project_structure(java_files)
+            # Show progress while analyzing
+            with st.spinner('Analyzing project structure...'):
+                java_files = analyzer.analyze_project(project_path)
+                project_structure = analyzer.get_project_structure(java_files)
 
             # Project Overview Tab
             with project_tab:
-                if st.button("Show Project Overview"):
-                    display_project_structure(project_structure)
+                display_project_structure(project_structure)
 
             # Structure Analysis Tab
             with structure_tab:
-                if st.button("Analyze Code Structure"):
-                    display_code_structure(project_structure)
+                display_code_structure(project_structure)
 
             # Diagrams Tab
             with diagrams_tab:
@@ -63,27 +62,37 @@ def main():
                     ["UML Class Diagram", "Sequence Diagram", "Call Graph"]
                 )
 
-                if st.button("Generate Diagram"):
-                    if diagram_type == "UML Class Diagram":
-                        generate_project_uml(java_files)
-                    elif diagram_type == "Sequence Diagram":
-                        generate_sequence_diagram(project_path)
-                    elif diagram_type == "Call Graph":
-                        generate_call_graph(project_path)
+                if diagram_type == "UML Class Diagram":
+                    generate_project_uml(java_files)
+                elif diagram_type == "Sequence Diagram":
+                    generate_sequence_diagram(project_path)
+                elif diagram_type == "Call Graph":
+                    generate_call_graph(project_path)
 
             # Database Tab
             with db_tab:
-                if st.button("Analyze Database Schema"):
-                    analyze_database_schema()
+                analyze_database_schema()
 
         except Exception as e:
             handle_error(e)
+    else:
+        st.info("Please upload a Java project (ZIP file) to begin analysis")
 
 def display_project_structure(project_structure):
     st.subheader("Project Structure")
 
+    if not project_structure:
+        st.warning("No Java files found in the project")
+        return
+
+    total_files = sum(len(files) for files in project_structure.values())
+    total_packages = len(project_structure)
+    st.markdown(f"**Project Summary:**")
+    st.markdown(f"- Total Packages: {total_packages}")
+    st.markdown(f"- Total Java Files: {total_files}")
+
     for package, files in project_structure.items():
-        with st.expander(f"Package: {package}"):
+        with st.expander(f"Package: {package}", expanded=True):
             for file in files:
                 st.markdown(f"**File:** {file['path']}")
                 st.markdown(f"*{file['description']}*")
@@ -112,6 +121,10 @@ def display_project_structure(project_structure):
 def display_code_structure(project_structure):
     st.subheader("Code Structure Analysis")
 
+    if not project_structure:
+        st.warning("No Java files found in the project")
+        return
+
     selected_package = st.selectbox(
         "Select Package",
         options=list(project_structure.keys())
@@ -120,7 +133,7 @@ def display_code_structure(project_structure):
     if selected_package:
         files = project_structure[selected_package]
         for file in files:
-            with st.expander(f"File: {file['path']}"):
+            with st.expander(f"File: {file['path']}", expanded=True):
                 for class_info in file['classes']:
                     st.markdown(f"### Class: {class_info['name']}")
                     display_class_details(class_info)
@@ -128,17 +141,22 @@ def display_code_structure(project_structure):
 def generate_project_uml(java_files):
     st.subheader("Project UML Class Diagram")
 
-    uml_generator = UMLGenerator()
-    all_classes = []
+    if not java_files:
+        st.warning("No Java files found to generate UML diagram")
+        return
 
-    for file in java_files:
-        for class_info in file.classes:
-            java_class = JavaCodeParser.dict_to_class(class_info)
-            all_classes.append(java_class)
+    with st.spinner('Generating UML diagram...'):
+        uml_generator = UMLGenerator()
+        all_classes = []
 
-    uml_code = uml_generator.generate_class_diagram(all_classes)
-    st.text_area("PlantUML Code", uml_code, height=300)
-    st.markdown(create_download_link(uml_code, "project_class_diagram.puml"), unsafe_allow_html=True)
+        for file in java_files:
+            for class_info in file.classes:
+                java_class = JavaCodeParser.dict_to_class(class_info)
+                all_classes.append(java_class)
+
+        uml_code = uml_generator.generate_class_diagram(all_classes)
+        st.text_area("PlantUML Code", uml_code, height=300)
+        st.markdown(create_download_link(uml_code, "project_class_diagram.puml"), unsafe_allow_html=True)
 
 def display_class_details(class_info):
     if class_info['extends']:
@@ -157,46 +175,6 @@ def display_class_details(class_info):
     for method in class_info['methods']:
         st.markdown(f"- {method}")
 
-def analyze_code_structure(code_content: str):
-    st.subheader("Code Structure Analysis")
-
-    parser = JavaCodeParser()
-    show_progress_bar("Analyzing code structure")
-
-    classes = parser.parse_code(code_content)
-
-    for java_class in classes:
-        with st.expander(f"Class: {java_class.name}"):
-            st.write("**Fields:**")
-            for field in java_class.fields:
-                st.write(f"- {field}")
-
-            st.write("**Methods:**")
-            for method in java_class.methods:
-                st.write(f"- {method}")
-
-            if java_class.extends:
-                st.write(f"**Extends:** {java_class.extends}")
-
-            if java_class.implements:
-                st.write("**Implements:**")
-                for interface in java_class.implements:
-                    st.write(f"- {interface}")
-
-def generate_uml_diagram(code_content: str):
-    st.subheader("UML Class Diagram")
-
-    parser = JavaCodeParser()
-    uml_generator = UMLGenerator()
-
-    show_progress_bar("Generating UML diagram")
-
-    classes = parser.parse_code(code_content)
-    uml_code = uml_generator.generate_class_diagram(classes)
-
-    st.text_area("PlantUML Code", uml_code, height=300)
-    st.markdown(create_download_link(uml_code, "class_diagram.puml"), unsafe_allow_html=True)
-
 def generate_sequence_diagram(project_path):
     st.subheader("Sequence Diagram Generator")
 
@@ -204,56 +182,58 @@ def generate_sequence_diagram(project_path):
 
     method_name = st.text_input("Enter method name to analyze:")
     if method_name:
-        show_progress_bar("Generating sequence diagram")
-
-        sequence_diagram = generator.analyze_method_calls(project_path, method_name) #modified to accept project_path
-        st.text_area("PlantUML Sequence Diagram", sequence_diagram, height=300)
-        st.markdown(create_download_link(sequence_diagram, "sequence_diagram.puml"), unsafe_allow_html=True)
+        with st.spinner('Generating sequence diagram...'):
+            sequence_diagram = generator.analyze_method_calls(project_path, method_name)
+            st.text_area("PlantUML Sequence Diagram", sequence_diagram, height=300)
+            st.markdown(create_download_link(sequence_diagram, "sequence_diagram.puml"), unsafe_allow_html=True)
 
 def generate_call_graph(project_path):
     st.subheader("Function Call Graph")
 
-    analyzer = CallGraphAnalyzer()
-    show_progress_bar("Generating call graph")
+    with st.spinner('Generating call graph...'):
+        analyzer = CallGraphAnalyzer()
+        graph = analyzer.analyze_calls(project_path)
+        graph_data = analyzer.get_graph_data()
 
-    graph = analyzer.analyze_calls(project_path) #modified to accept project_path
-    graph_data = analyzer.get_graph_data()
-
-    fig, ax = plt.subplots(figsize=(10, 10))
-    nx.draw(
-        graph,
-        pos=nx.spring_layout(graph),
-        with_labels=True,
-        node_color='lightblue',
-        node_size=2000,
-        font_size=8,
-        font_weight='bold',
-        arrows=True,
-        ax=ax
-    )
-    st.pyplot(fig)
+        fig, ax = plt.subplots(figsize=(10, 10))
+        nx.draw(
+            graph,
+            pos=nx.spring_layout(graph),
+            with_labels=True,
+            node_color='lightblue',
+            node_size=2000,
+            font_size=8,
+            font_weight='bold',
+            arrows=True,
+            ax=ax
+        )
+        st.pyplot(fig)
 
 def analyze_database_schema():
     st.subheader("Database Schema Analysis")
 
-    analyzer = DatabaseAnalyzer()
-    show_progress_bar("Analyzing database schema")
+    with st.spinner('Analyzing database schema...'):
+        analyzer = DatabaseAnalyzer()
 
-    try:
-        analyzer.connect_to_db()
-        schema_info = analyzer.analyze_schema()
+        try:
+            analyzer.connect_to_db()
+            schema_info = analyzer.analyze_schema()
 
-        for table_name, table_info in schema_info.items():
-            with st.expander(f"Table: {table_name}"):
-                st.write("**Columns:**")
-                for column in table_info['columns']:
-                    st.write(f"- {column['name']} ({column['type']}) {'NULL' if column['nullable'] else 'NOT NULL'}")
+            if not schema_info:
+                st.warning("No database schema found")
+                return
 
-                st.write("**Foreign Keys:**")
-                for fk in table_info['foreign_keys']:
-                    st.write(f"- References {fk['referred_table']} ({', '.join(fk['referred_columns'])})")
-    except Exception as e:
-        handle_error(e)
+            for table_name, table_info in schema_info.items():
+                with st.expander(f"Table: {table_name}", expanded=True):
+                    st.write("**Columns:**")
+                    for column in table_info['columns']:
+                        st.write(f"- {column['name']} ({column['type']}) {'NULL' if column['nullable'] else 'NOT NULL'}")
+
+                    st.write("**Foreign Keys:**")
+                    for fk in table_info['foreign_keys']:
+                        st.write(f"- References {fk['referred_table']} ({', '.join(fk['referred_columns'])})")
+        except Exception as e:
+            handle_error(e)
 
 if __name__ == "__main__":
     main()
