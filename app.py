@@ -25,10 +25,25 @@ def clear_session_state():
 
 def extract_project(uploaded_file):
     """Extract uploaded zip file to temporary directory"""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        with ZipFile(uploaded_file, 'r') as zip_ref:
-            zip_ref.extractall(temp_dir)
-        return temp_dir
+    # Create a temporary directory that persists during the session
+    if 'temp_dir' not in st.session_state:
+        st.session_state.temp_dir = tempfile.mkdtemp()
+
+    temp_dir = st.session_state.temp_dir
+
+    # Clear previous contents
+    for root, dirs, files in os.walk(temp_dir, topdown=False):
+        for name in files:
+            os.remove(os.path.join(root, name))
+        for name in dirs:
+            os.rmdir(os.path.join(root, name))
+
+    # Extract new files
+    with ZipFile(uploaded_file, 'r') as zip_ref:
+        zip_ref.extractall(temp_dir)
+
+    st.session_state.project_files = [f for f in os.listdir(temp_dir) if f.endswith('.java')]
+    return temp_dir
 
 def main():
     st.title("Java Project Analyzer")
@@ -49,12 +64,23 @@ def main():
 
     if uploaded_file is not None:
         try:
+            # Extract and analyze project
             project_path = extract_project(uploaded_file)
+
+            # Debug information
+            st.sidebar.write("Debug Info:")
+            st.sidebar.write(f"Project path: {project_path}")
+            st.sidebar.write(f"Java files found: {st.session_state.get('project_files', [])}")
+
             analyzer = ProjectAnalyzer()
 
             # Show progress while analyzing
             with st.spinner('Analyzing project structure...'):
                 java_files = analyzer.analyze_project(project_path)
+                if not java_files:
+                    st.warning(f"No Java files found in {project_path}")
+                    return
+
                 project_structure = analyzer.get_project_structure(java_files)
 
             # Project Overview Tab
@@ -85,6 +111,7 @@ def main():
 
         except Exception as e:
             handle_error(e)
+            st.error(f"Error details: {str(e)}")
     else:
         st.info("Please upload a Java project (ZIP file) to begin analysis")
 
