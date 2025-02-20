@@ -238,53 +238,66 @@ def main():
                     # Sort methods alphabetically for easier selection
                     available_methods.sort()
 
-                    # Method selection
-                    method_name = st.selectbox(
-                        "Select method to analyze:",
-                        options=available_methods,
-                        format_func=lambda x: x  # Display full method name
-                    )
+                    if not available_methods:
+                        st.warning("No methods found in the project files")
+                    else:
+                        # Method selection
+                        method_name = st.selectbox(
+                            "Select method to analyze:",
+                            options=available_methods,
+                            format_func=lambda x: x  # Display full method name
+                        )
 
-                    if method_name:
-                        # Extract just the method name from the class.method format
-                        actual_method = method_name.split('.')[-1]
+                        if method_name:
+                            # Extract just the method name from the class.method format
+                            actual_method = method_name.split('.')[-1]
 
-                        with st.spinner('Generating sequence diagram...'):
-                            generator = SequenceDiagramGenerator()
+                            with st.spinner('Generating sequence diagram...'):
+                                generator = SequenceDiagramGenerator()
 
-                            # Read all Java files and combine their content
-                            combined_code = ""
-                            for file in java_files:
-                                file_path = os.path.join(project_path, file.path)
-                                with open(file_path, 'r', encoding='utf-8') as f:
-                                    combined_code += f.read() + "\n"
+                                # Read all Java files and combine their content
+                                combined_code = ""
+                                for file in java_files:
+                                    file_path = os.path.join(project_path, file.path)
+                                    try:
+                                        with open(file_path, 'r', encoding='utf-8') as f:
+                                            combined_code += f.read() + "\n"
+                                    except Exception as e:
+                                        st.error(f"Error reading file {file.path}: {str(e)}")
+                                        continue
 
-                            try:
-                                seq_code, seq_image = generator.analyze_method_calls(combined_code, actual_method)
+                                try:
+                                    seq_code, seq_image = generator.analyze_method_calls(combined_code, actual_method)
 
-                                # Display and download options
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    st.download_button(
-                                        "Download Diagram (PNG)",
-                                        seq_image,
-                                        "sequence_diagram.png",
-                                        "image/png"
-                                    )
-                                with col2:
-                                    st.download_button(
-                                        "Download PlantUML Code",
-                                        seq_code,
-                                        "sequence_diagram.puml",
-                                        "text/plain"
-                                    )
+                                    # Display and download options in columns
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.download_button(
+                                            "📥 Download Diagram (PNG)",
+                                            seq_image,
+                                            "sequence_diagram.png",
+                                            "image/png",
+                                            help="Download the sequence diagram as a PNG image"
+                                        )
+                                    with col2:
+                                        st.download_button(
+                                            "📄 Download PlantUML Code",
+                                            seq_code,
+                                            "sequence_diagram.puml",
+                                            "text/plain",
+                                            help="Download the PlantUML source code"
+                                        )
 
-                                # Display diagram
-                                st.image(seq_image, caption=f"Sequence Diagram for {method_name}", use_container_width=True)
-                                with st.expander("View PlantUML Code"):
-                                    st.code(seq_code, language="text")
-                            except Exception as e:
-                                st.error(f"Error generating sequence diagram: {str(e)}")
+                                    # Display diagram
+                                    st.image(seq_image, caption=f"Sequence Diagram for {method_name}", use_container_width=True)
+
+                                    # Show PlantUML code in an expandable section
+                                    with st.expander("View PlantUML Code"):
+                                        st.code(seq_code, language="text")
+
+                                except Exception as e:
+                                    st.error(f"Error generating sequence diagram: {str(e)}")
+                                    st.info("Please make sure the selected method exists and contains valid Java code.")
 
                 elif diagram_type == "Call Graph":
                     with st.spinner('Generating call graph...'):
@@ -424,7 +437,6 @@ def main():
             # API Details Tab
             with api_details_tab:
                 st.subheader("API Analysis")
-
                 api_type = st.radio(
                     "Select API Type",
                     ["REST APIs", "SOAP Services"]
@@ -871,7 +883,7 @@ def analyze_database_schema(java_files, project_path):
             "DELETE": []
         }
 
-        # Analyze all files for SQL queries
+        # Analyze allfiles for SQL queries
         for file in java_files:
             file_path = os.path.join(project_path, file.path)
             try:
