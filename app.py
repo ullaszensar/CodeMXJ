@@ -41,7 +41,7 @@ def main():
     # Add refresh button at the top of the sidebar
     if st.sidebar.button("🔄 Refresh App"):
         clear_session_state()
-        st.experimental_rerun()
+        st.rerun()
 
     # Project upload - always visible in the project tab
     with project_tab:
