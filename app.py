@@ -49,11 +49,24 @@ def extract_project(uploaded_file):
             os.rmdir(os.path.join(root, name))
 
     # Extract new files
-    with ZipFile(uploaded_file, 'r') as zip_ref:
-        zip_ref.extractall(temp_dir)
+    try:
+        with ZipFile(uploaded_file, 'r') as zip_ref:
+            for file_info in zip_ref.filelist:
+                # Skip directories
+                if file_info.filename.endswith('/'):
+                    continue
+                # Only extract .java files
+                if file_info.filename.endswith('.java'):
+                    zip_ref.extract(file_info, temp_dir)
 
-    st.session_state.project_files = [f for f in os.listdir(temp_dir) if f.endswith('.java')]
-    return temp_dir
+        st.session_state.project_files = [
+            f for f in os.listdir(temp_dir) 
+            if f.endswith('.java') and os.path.isfile(os.path.join(temp_dir, f))
+        ]
+        return temp_dir
+    except Exception as e:
+        st.error(f"Error extracting project: {str(e)}")
+        return None
 
 def main():
     st.title("CodeMXJ")
@@ -69,7 +82,12 @@ def main():
             st.rerun()
 
         st.header("Upload Project")
-        uploaded_file = st.file_uploader("Upload Java Project (ZIP file)", type=["zip"])
+        # Update file uploader to handle Java files
+        uploaded_file = st.file_uploader(
+            "Upload Java Project (ZIP file containing .java files)",
+            type=["zip"],
+            help="Upload a ZIP file containing Java source files (.java)"
+        )
 
     # Create tabs for different analysis views
     structure_tab, diagrams_tab, patterns_tab, demographics_tab, services_tab, api_details_tab, legacy_api_tab, db_tab = st.tabs([
