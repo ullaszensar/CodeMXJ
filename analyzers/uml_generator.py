@@ -1,13 +1,14 @@
 import plantuml
-from typing import List
-from .code_parser import JavaClass
+from typing import List, Tuple
+from .java_class import JavaClass
 
 class UMLGenerator:
     def __init__(self):
         self.plantuml = plantuml.PlantUML(url='http://www.plantuml.com/plantuml/img/')
 
-    def generate_class_diagram(self, classes: List[JavaClass]) -> str:
-        uml_code = ["@startuml"]
+    def generate_class_diagram(self, classes: List[JavaClass]) -> Tuple[str, bytes]:
+        """Generate class diagram and return both PlantUML code and PNG image"""
+        uml_code = ["@startuml", "skinparam classAttributeIconSize 0"]
 
         for java_class in classes:
             uml_code.append(f"class {java_class.name} {{")
@@ -32,4 +33,9 @@ class UMLGenerator:
                     uml_code.append(f"{java_class.name} ..|> {interface}")
 
         uml_code.append("@enduml")
-        return "\n".join(uml_code)
+        diagram_code = "\n".join(uml_code)
+
+        # Generate PNG image
+        diagram_image = self.plantuml.get_png(diagram_code)
+
+        return diagram_code, diagram_image

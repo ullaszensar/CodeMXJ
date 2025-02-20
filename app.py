@@ -12,6 +12,8 @@ from analyzers.db_analyzer import DatabaseAnalyzer
 from analyzers.project_analyzer import ProjectAnalyzer
 from utils.helpers import display_code_with_syntax_highlighting, create_download_link, show_progress_bar, handle_error
 from analyzers.java_class import JavaClass # Added import statement
+import base64
+from io import BytesIO
 
 st.set_page_config(
     page_title="Java Project Analyzer",
@@ -102,11 +104,118 @@ def main():
                 )
 
                 if diagram_type == "UML Class Diagram":
-                    generate_project_uml(java_files)
+                    with st.spinner('Generating class diagram...'):
+                        uml_generator = UMLGenerator()
+                        all_classes = []
+
+                        for file in java_files:
+                            for class_info in file.classes:
+                                java_class = JavaClass.from_dict(class_info)
+                                all_classes.append(java_class)
+
+                        uml_code, uml_image = uml_generator.generate_class_diagram(all_classes)
+
+                        # Display and download options
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                "Download Diagram (PNG)",
+                                uml_image,
+                                "class_diagram.png",
+                                "image/png"
+                            )
+                        with col2:
+                            st.download_button(
+                                "Download PlantUML Code",
+                                uml_code,
+                                "class_diagram.puml",
+                                "text/plain"
+                            )
+
+                        # Display diagram
+                        st.image(uml_image, caption="Class Diagram", use_column_width=True)
+                        st.code(uml_code, language="text")
+
                 elif diagram_type == "Sequence Diagram":
-                    generate_sequence_diagram(project_path)
+                    method_name = st.text_input("Enter method name to analyze:")
+                    if method_name:
+                        with st.spinner('Generating sequence diagram...'):
+                            generator = SequenceDiagramGenerator()
+
+                            # Read all Java files and combine their content
+                            combined_code = ""
+                            for file in java_files:
+                                file_path = os.path.join(project_path, file.path)
+                                with open(file_path, 'r', encoding='utf-8') as f:
+                                    combined_code += f.read() + "\n"
+
+                            seq_code, seq_image = generator.analyze_method_calls(combined_code, method_name)
+
+                            # Display and download options
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.download_button(
+                                    "Download Diagram (PNG)",
+                                    seq_image,
+                                    "sequence_diagram.png",
+                                    "image/png"
+                                )
+                            with col2:
+                                st.download_button(
+                                    "Download PlantUML Code",
+                                    seq_code,
+                                    "sequence_diagram.puml",
+                                    "text/plain"
+                                )
+
+                            # Display diagram
+                            st.image(seq_image, caption="Sequence Diagram", use_column_width=True)
+                            st.code(seq_code, language="text")
+
                 elif diagram_type == "Call Graph":
-                    generate_call_graph(project_path)
+                    with st.spinner('Generating call graph...'):
+                        analyzer = CallGraphAnalyzer()
+
+                        # Analyze all Java files
+                        combined_code = ""
+                        for file in java_files:
+                            file_path = os.path.join(project_path, file.path)
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                combined_code += f.read() + "\n"
+
+                        graph = analyzer.analyze_calls(combined_code)
+                        graph_data = analyzer.get_graph_data()
+
+                        # Create matplotlib figure
+                        fig, ax = plt.subplots(figsize=(10, 10))
+                        nx.draw(
+                            graph,
+                            pos=nx.spring_layout(graph),
+                            with_labels=True,
+                            node_color='lightblue',
+                            node_size=2000,
+                            font_size=8,
+                            font_weight='bold',
+                            arrows=True,
+                            ax=ax
+                        )
+
+                        # Save plot to BytesIO
+                        buf = BytesIO()
+                        plt.savefig(buf, format='png', bbox_inches='tight')
+                        buf.seek(0)
+                        plot_image = buf.getvalue()
+
+                        # Display and download options
+                        st.download_button(
+                            "Download Call Graph (PNG)",
+                            plot_image,
+                            "call_graph.png",
+                            "image/png"
+                        )
+
+                        # Display graph
+                        st.image(plot_image, caption="Call Graph", use_column_width=True)
 
             # Database Tab
             with db_tab:
