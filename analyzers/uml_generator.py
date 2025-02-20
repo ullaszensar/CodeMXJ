@@ -1,6 +1,7 @@
 import plantuml
 from typing import List, Tuple
 from .java_class import JavaClass
+import requests
 
 class UMLGenerator:
     def __init__(self):
@@ -35,7 +36,10 @@ class UMLGenerator:
         uml_code.append("@enduml")
         diagram_code = "\n".join(uml_code)
 
-        # Generate PNG image
-        diagram_image = self.plantuml.get_png(diagram_code)
-
-        return diagram_code, diagram_image
+        # Get diagram URL and fetch the image
+        diagram_url = self.plantuml.get_url(diagram_code)
+        response = requests.get(diagram_url)
+        if response.status_code == 200:
+            return diagram_code, response.content
+        else:
+            raise Exception(f"Failed to generate diagram image: HTTP {response.status_code}")

@@ -1,6 +1,7 @@
 import javalang
 from typing import List, Dict, Tuple
 import plantuml
+import requests
 
 class SequenceDiagramGenerator:
     def __init__(self):
@@ -17,8 +18,14 @@ class SequenceDiagramGenerator:
                     self._analyze_method_body(node)
 
             diagram_code = self._generate_sequence_diagram()
-            diagram_image = self.plantuml.get_png(diagram_code)
-            return diagram_code, diagram_image
+
+            # Get diagram URL and fetch the image
+            diagram_url = self.plantuml.get_url(diagram_code)
+            response = requests.get(diagram_url)
+            if response.status_code == 200:
+                return diagram_code, response.content
+            else:
+                raise Exception(f"Failed to generate diagram image: HTTP {response.status_code}")
         except Exception as e:
             raise Exception(f"Failed to analyze method calls: {str(e)}")
 
