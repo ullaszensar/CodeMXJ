@@ -20,9 +20,10 @@ from analyzers.legacy_table_analyzer import LegacyTableAnalyzer # Add to imports
 from analyzers.demographics_analyzer import DemographicsAnalyzer
 
 st.set_page_config(
-    page_title="Java Project Analyzer",
+    page_title="CodeMXJ",
     page_icon="📊",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 def clear_session_state():
@@ -53,15 +54,18 @@ def extract_project(uploaded_file):
     return temp_dir
 
 def main():
-    st.title("Java Project Analyzer")
-
-    # Add refresh button at the top
-    if st.button("🔄 Refresh App"):
-        clear_session_state()
-        st.rerun()
+    st.title("CodeMXJ")
+    st.markdown("<p style='color: #B8860B;'>Advanced Java Code Analysis & Visualization</p>", unsafe_allow_html=True)
 
     # File uploader in the sidebar
     with st.sidebar:
+        st.header("CodeMXJ Controls")
+
+        # Add refresh button at the top of sidebar
+        if st.button("🔄 Refresh App"):
+            clear_session_state()
+            st.rerun()
+
         st.header("Upload Project")
         uploaded_file = st.file_uploader("Upload Java Project (ZIP file)", type=["zip"])
 
