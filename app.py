@@ -18,6 +18,11 @@ st.set_page_config(
     layout="wide"
 )
 
+def clear_session_state():
+    """Clear all session state variables"""
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+
 def extract_project(uploaded_file):
     """Extract uploaded zip file to temporary directory"""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -32,6 +37,11 @@ def main():
     project_tab, structure_tab, diagrams_tab, db_tab = st.sidebar.tabs([
         "Project", "Structure", "Diagrams", "Database"
     ])
+
+    # Add refresh button at the top of the sidebar
+    if st.sidebar.button("🔄 Refresh App"):
+        clear_session_state()
+        st.experimental_rerun()
 
     # Project upload - always visible in the project tab
     with project_tab:
