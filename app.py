@@ -48,29 +48,31 @@ def extract_project(uploaded_file):
 def main():
     st.title("Java Project Analyzer")
 
-    # Create tabs in the sidebar
-    project_tab, structure_tab, diagrams_tab, db_tab = st.sidebar.tabs([
-        "Project", "Structure", "Diagrams", "Database"
-    ])
-
-    # Add refresh button at the top of the sidebar
-    if st.sidebar.button("🔄 Refresh App"):
+    # Add refresh button at the top
+    if st.button("🔄 Refresh App"):
         clear_session_state()
         st.rerun()
 
-    # Project upload - always visible in the project tab
-    with project_tab:
+    # File uploader in the sidebar
+    with st.sidebar:
+        st.header("Upload Project")
         uploaded_file = st.file_uploader("Upload Java Project (ZIP file)", type=["zip"])
+
+    # Create tabs for different analysis views
+    structure_tab, diagrams_tab, db_tab = st.tabs([
+        "Code Structure", "Diagrams", "Database"
+    ])
 
     if uploaded_file is not None:
         try:
             # Extract and analyze project
             project_path = extract_project(uploaded_file)
 
-            # Debug information
-            st.sidebar.write("Debug Info:")
-            st.sidebar.write(f"Project path: {project_path}")
-            st.sidebar.write(f"Java files found: {st.session_state.get('project_files', [])}")
+            # Debug information in sidebar
+            with st.sidebar:
+                st.write("Debug Info:")
+                st.write(f"Project path: {project_path}")
+                st.write(f"Java files found: {st.session_state.get('project_files', [])}")
 
             analyzer = ProjectAnalyzer()
 
@@ -83,9 +85,9 @@ def main():
 
                 project_structure = analyzer.get_project_structure(java_files)
 
-            # Project Overview Tab
-            with project_tab:
-                display_project_structure(project_structure)
+            # Project Structure (always visible in main content)
+            st.header("Project Overview")
+            display_project_structure(project_structure)
 
             # Structure Analysis Tab
             with structure_tab:
