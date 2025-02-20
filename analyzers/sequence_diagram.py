@@ -4,6 +4,7 @@ import plantuml
 import requests
 import traceback
 import logging
+import re
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -14,6 +15,24 @@ class SequenceDiagramGenerator:
         self.current_class = None
         self.plantuml = plantuml.PlantUML(url='http://www.plantuml.com/plantuml/img/')
 
+    def _sanitize_java_code(self, code: str) -> str:
+        """Pre-process Java code to handle common parsing issues."""
+        # Remove package-info.java content as it can't be parsed
+        if "package-info" in code:
+            return ""
+
+        # Remove any BOM markers
+        code = code.replace('\ufeff', '')
+
+        # Ensure proper class structure
+        if not re.search(r'(class|interface|enum)\s+\w+', code, re.MULTILINE):
+            return ""
+
+        # Remove any trailing semicolons after class closing braces
+        code = re.sub(r'};(\s*)$', r'}\1', code)
+
+        return code.strip()
+
     def analyze_method_calls(self, code: str, method_name: str) -> Tuple[str, bytes]:
         """Analyze method calls and generate a sequence diagram."""
         try:
@@ -21,26 +40,26 @@ class SequenceDiagramGenerator:
                 raise ValueError("Code and method name must not be empty")
 
             logger.debug(f"Starting analysis for method: {method_name}")
-            logger.debug(f"Code length: {len(code)} characters")
-            logger.debug(f"Code sample (first 100 chars): {code[:100]}")
+            logger.debug(f"Original code length: {len(code)} characters")
 
-            # Pre-process code to handle potential formatting issues
-            code = code.strip()
-            if not code.endswith("}"):
-                logger.warning("Code might be incomplete or malformed")
+            # Pre-process the code
+            code = self._sanitize_java_code(code)
+            if not code:
+                logger.warning("Code was empty after sanitization")
+                raise ValueError("Invalid Java code structure")
+
+            logger.debug(f"Sanitized code length: {len(code)} characters")
+            logger.debug(f"Code sample (first 200 chars): {code[:200]}")
 
             try:
+                tokens = list(javalang.tokenizer.tokenize(code))
+                logger.debug(f"Successfully tokenized code. Found {len(tokens)} tokens")
+
                 tree = javalang.parse.parse(code)
                 logger.debug("Successfully parsed Java code")
             except Exception as parse_error:
                 logger.error(f"Failed to parse Java code: {str(parse_error)}")
                 logger.debug(f"Parse error details: {traceback.format_exc()}")
-                # Try to get more specific error information
-                try:
-                    tokens = list(javalang.tokenizer.tokenize(code))
-                    logger.debug(f"Tokenization successful, found {len(tokens)} tokens")
-                except Exception as token_error:
-                    logger.error(f"Tokenization failed: {str(token_error)}")
                 raise Exception(f"Failed to parse Java code: {str(parse_error)}")
 
             self.interactions = []
@@ -48,10 +67,13 @@ class SequenceDiagramGenerator:
 
             # First pass: identify the class containing the target method
             class_found = False
+            method_found = False
+
             for path, node in tree.filter(javalang.tree.ClassDeclaration):
                 logger.debug(f"Analyzing class: {node.name}")
                 for method in node.methods:
                     logger.debug(f"Found method: {method.name}")
+                    method_found = True
                     if method.name == method_name:
                         self.current_class = node.name
                         logger.info(f"Found target method '{method_name}' in class: {self.current_class}")
@@ -61,6 +83,8 @@ class SequenceDiagramGenerator:
                 if class_found:
                     break
 
+            if not method_found:
+                logger.warning("No methods found in any class")
             if not self.current_class:
                 logger.error(f"Method '{method_name}' not found in any class")
                 raise Exception(f"Method '{method_name}' not found in any class")
@@ -95,10 +119,10 @@ class SequenceDiagramGenerator:
             raise
 
     def _analyze_method_body(self, method_node):
-        """Analyze method body for method calls with improved context."""
+        """Analyze method body for method calls."""
         if not method_node.body:
             logger.warning(f"No method body found for {method_node.name}")
-            return
+            return None
 
         try:
             for path, node in method_node.filter(javalang.tree.MethodInvocation):
@@ -124,22 +148,8 @@ class SequenceDiagramGenerator:
             logger.error(f"Error analyzing method body: {str(e)}")
             logger.debug(f"Method body analysis stack trace: {traceback.format_exc()}")
 
-    def _extract_arguments(self, method_node) -> List[str]:
-        """Extract method call arguments for better diagram details."""
-        args = []
-        try:
-            if hasattr(method_node, 'arguments'):
-                for arg in method_node.arguments:
-                    if hasattr(arg, 'value'):
-                        args.append(str(arg.value))
-                    else:
-                        args.append(str(arg))
-        except Exception as e:
-            logger.warning(f"Error extracting arguments: {str(e)}")
-        return args
-
     def _generate_sequence_diagram(self) -> str:
-        """Generate PlantUML sequence diagram with improved formatting."""
+        """Generate PlantUML sequence diagram."""
         try:
             diagram = [
                 "@startuml",
@@ -188,3 +198,17 @@ class SequenceDiagramGenerator:
         except Exception as e:
             logger.error(f"Error generating sequence diagram: {str(e)}")
             raise Exception(f"Failed to generate sequence diagram: {str(e)}")
+
+    def _extract_arguments(self, method_node) -> List[str]:
+        """Extract method call arguments."""
+        args = []
+        try:
+            if hasattr(method_node, 'arguments'):
+                for arg in method_node.arguments:
+                    if hasattr(arg, 'value'):
+                        args.append(str(arg.value))
+                    else:
+                        args.append(str(arg))
+        except Exception as e:
+            logger.warning(f"Error extracting arguments: {str(e)}")
+        return args
