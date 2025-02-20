@@ -205,45 +205,123 @@ def main():
                             # Create class dependency graph
                             graph = analyzer.analyze_class_dependencies(combined_code)
 
-                            # Display Class Relationships Table
-                            st.subheader("Class Relationships")
-                            relationships_data = []
+                            # Display Class Relationships Tables
+                            st.subheader("Class Relationships Analysis")
+
+                            # Split relationships by type
+                            inheritance_data = []
+                            implementation_data = []
+                            association_data = []
+                            composition_data = []
+
                             for source, target, data in graph.edges(data=True):
                                 relationship_type = data.get('type', 'Association')
-                                relationships_data.append({
+                                relationship_info = {
                                     'Source Class': source,
                                     'Target Class': target,
-                                    'Relationship Type': relationship_type,
                                     'Details': data.get('details', '')
-                                })
+                                }
 
-                            if relationships_data:
-                                df = pd.DataFrame(relationships_data)
+                                if relationship_type == 'Inheritance':
+                                    inheritance_data.append(relationship_info)
+                                elif relationship_type == 'Implementation':
+                                    implementation_data.append(relationship_info)
+                                elif relationship_type == 'Composition':
+                                    composition_data.append(relationship_info)
+                                else:
+                                    association_data.append(relationship_info)
+
+                            # Display Inheritance Relationships
+                            if inheritance_data:
+                                st.markdown("### 🔵 Inheritance Relationships")
+                                st.markdown("Shows parent-child relationships between classes")
+                                df_inheritance = pd.DataFrame(inheritance_data)
                                 st.dataframe(
-                                    df,
+                                    df_inheritance,
                                     column_config={
-                                        'Source Class': st.column_config.TextColumn('Source Class'),
-                                        'Target Class': st.column_config.TextColumn('Target Class'),
-                                        'Relationship Type': st.column_config.TextColumn('Type'),
-                                        'Details': st.column_config.TextColumn('Details')
+                                        'Source Class': st.column_config.TextColumn('Child Class'),
+                                        'Target Class': st.column_config.TextColumn('Parent Class'),
+                                        'Details': st.column_config.TextColumn('Description')
                                     },
                                     use_container_width=True,
                                     hide_index=True
                                 )
 
-                                # Add CSV download option
-                                csv = df.to_csv(index=False)
-                                st.download_button(
-                                    "📥 Download Relationships Data (CSV)",
-                                    csv,
-                                    "class_relationships.csv",
-                                    "text/csv",
-                                    help="Download the class relationships data as a CSV file"
+                            # Display Interface Implementations
+                            if implementation_data:
+                                st.markdown("### 🟢 Interface Implementations")
+                                st.markdown("Shows which classes implement which interfaces")
+                                df_implementation = pd.DataFrame(implementation_data)
+                                st.dataframe(
+                                    df_implementation,
+                                    column_config={
+                                        'Source Class': st.column_config.TextColumn('Implementing Class'),
+                                        'Target Class': st.column_config.TextColumn('Interface'),
+                                        'Details': st.column_config.TextColumn('Description')
+                                    },
+                                    use_container_width=True,
+                                    hide_index=True
                                 )
-                            else:
-                                st.info("No class relationships found in the project")
 
-                            # Create matplotlib figure for visualization
+                            # Display Composition Relationships
+                            if composition_data:
+                                st.markdown("### 🔴 Composition Relationships")
+                                st.markdown("Shows strong 'has-a' relationships where one class contains another")
+                                df_composition = pd.DataFrame(composition_data)
+                                st.dataframe(
+                                    df_composition,
+                                    column_config={
+                                        'Source Class': st.column_config.TextColumn('Container Class'),
+                                        'Target Class': st.column_config.TextColumn('Contained Class'),
+                                        'Details': st.column_config.TextColumn('Description')
+                                    },
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+
+                            # Display Association Relationships
+                            if association_data:
+                                st.markdown("### ⚫ Association Relationships")
+                                st.markdown("Shows loose coupling between classes (uses, depends on)")
+                                df_association = pd.DataFrame(association_data)
+                                st.dataframe(
+                                    df_association,
+                                    column_config={
+                                        'Source Class': st.column_config.TextColumn('Using Class'),
+                                        'Target Class': st.column_config.TextColumn('Used Class'),
+                                        'Details': st.column_config.TextColumn('Description')
+                                    },
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+
+                            # Add relationship type explanations
+                            with st.expander("ℹ️ Understanding Class Relationships"):
+                                st.markdown("""
+                                ### Types of Class Relationships
+
+                                #### 🔵 Inheritance
+                                - Represents "is-a" relationships
+                                - Child class inherits properties and methods from parent class
+                                - Example: `Car extends Vehicle`
+
+                                #### 🟢 Implementation
+                                - Shows which classes implement interfaces
+                                - Class must provide implementations for interface methods
+                                - Example: `Car implements Driveable`
+
+                                #### 🔴 Composition
+                                - Represents strong "has-a" relationships
+                                - Contained class lifecycle depends on container class
+                                - Example: `Car has Engine` (Engine cannot exist without Car)
+
+                                #### ⚫ Association
+                                - Represents loose "uses" relationships
+                                - Classes are independent but work together
+                                - Example: `Driver uses Car` (both can exist independently)
+                                """)
+
+                            # Create visualization
                             st.subheader("Class Dependency Visualization")
                             fig, ax = plt.subplots(figsize=(12, 8))
                             pos = nx.spring_layout(graph, k=1, iterations=50)
