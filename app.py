@@ -145,7 +145,7 @@ def main():
                 display_diagrams_summary(java_files)
                 diagram_type = st.radio(
                     "Select Diagram Type",
-                    ["UML Class Diagram", "Class Dependencies"]
+                    ["UML Class Diagram"]
                 )
 
                 if diagram_type == "UML Class Diagram":
