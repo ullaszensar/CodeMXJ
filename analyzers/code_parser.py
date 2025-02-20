@@ -10,6 +10,16 @@ class JavaClass:
     extends: str = None
     implements: List[str] = None
 
+    @staticmethod
+    def dict_to_class(class_dict: Dict[str, Any]) -> 'JavaClass':
+        return JavaClass(
+            name=class_dict['name'],
+            methods=class_dict['methods'],
+            fields=class_dict['fields'],
+            extends=class_dict['extends'],
+            implements=class_dict['implements'] or []
+        )
+
 class JavaCodeParser:
     def __init__(self):
         self.tree = None
@@ -19,13 +29,13 @@ class JavaCodeParser:
         try:
             self.tree = javalang.parse.parse(code)
             self.classes = []
-            
+
             for path, node in self.tree.filter(javalang.tree.ClassDeclaration):
                 methods = [m.name for m in node.methods]
                 fields = [f.declarators[0].name for f in node.fields]
                 extends = node.extends.name if node.extends else None
                 implements = [i.name for i in node.implements] if node.implements else []
-                
+
                 java_class = JavaClass(
                     name=node.name,
                     methods=methods,
@@ -34,7 +44,7 @@ class JavaCodeParser:
                     implements=implements
                 )
                 self.classes.append(java_class)
-                
+
             return self.classes
         except Exception as e:
             raise Exception(f"Failed to parse Java code: {str(e)}")

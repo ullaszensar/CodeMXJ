@@ -1,47 +1,144 @@
 import streamlit as st
 import networkx as nx
 import matplotlib.pyplot as plt
+import os
+import tempfile
+from zipfile import ZipFile
 from analyzers.code_parser import JavaCodeParser
 from analyzers.uml_generator import UMLGenerator
 from analyzers.sequence_diagram import SequenceDiagramGenerator
 from analyzers.call_graph import CallGraphAnalyzer
 from analyzers.db_analyzer import DatabaseAnalyzer
+from analyzers.project_analyzer import ProjectAnalyzer
 from utils.helpers import display_code_with_syntax_highlighting, create_download_link, show_progress_bar, handle_error
 
 st.set_page_config(
-    page_title="Java Code Analyzer",
+    page_title="Java Project Analyzer",
     page_icon="📊",
     layout="wide"
 )
 
+def extract_project(uploaded_file):
+    """Extract uploaded zip file to temporary directory"""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        with ZipFile(uploaded_file, 'r') as zip_ref:
+            zip_ref.extractall(temp_dir)
+        return temp_dir
+
 def main():
-    st.title("Java Code Analyzer")
+    st.title("Java Project Analyzer")
     st.sidebar.title("Navigation")
-    
+
     analysis_type = st.sidebar.selectbox(
         "Select Analysis Type",
-        ["Code Structure", "UML Diagram", "Sequence Diagram", "Call Graph", "Database Schema"]
+        ["Project Structure", "Code Structure", "UML Diagram", "Sequence Diagram", "Call Graph", "Database Schema"]
     )
-    
-    # File upload
-    uploaded_file = st.file_uploader("Upload Java File", type=["java"])
-    
+
+    # Project upload
+    uploaded_file = st.file_uploader("Upload Java Project (ZIP file)", type=["zip"])
+
     if uploaded_file is not None:
-        code_content = uploaded_file.getvalue().decode("utf-8")
-        
         try:
-            if analysis_type == "Code Structure":
-                analyze_code_structure(code_content)
+            project_path = extract_project(uploaded_file)
+            analyzer = ProjectAnalyzer()
+
+            show_progress_bar("Analyzing project structure")
+            java_files = analyzer.analyze_project(project_path)
+            project_structure = analyzer.get_project_structure(java_files)
+
+            if analysis_type == "Project Structure":
+                display_project_structure(project_structure)
+            elif analysis_type == "Code Structure":
+                display_code_structure(project_structure)
             elif analysis_type == "UML Diagram":
-                generate_uml_diagram(code_content)
+                generate_project_uml(java_files)
             elif analysis_type == "Sequence Diagram":
-                generate_sequence_diagram(code_content)
+                generate_sequence_diagram(project_path) #This line was originally using code_content
             elif analysis_type == "Call Graph":
-                generate_call_graph(code_content)
+                generate_call_graph(project_path) #This line was originally using code_content
             elif analysis_type == "Database Schema":
                 analyze_database_schema()
+
         except Exception as e:
             handle_error(e)
+
+def display_project_structure(project_structure):
+    st.subheader("Project Structure")
+
+    for package, files in project_structure.items():
+        with st.expander(f"Package: {package}"):
+            for file in files:
+                st.markdown(f"**File:** {file['path']}")
+                st.markdown(f"*{file['description']}*")
+
+                for class_info in file['classes']:
+                    st.markdown(f"#### Class: {class_info['name']}")
+
+                    if class_info['extends']:
+                        st.markdown(f"*Extends:* {class_info['extends']}")
+
+                    if class_info['implements']:
+                        st.markdown(f"*Implements:* {', '.join(class_info['implements'])}")
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**Fields:**")
+                        for field in class_info['fields']:
+                            st.markdown(f"- {field}")
+
+                    with col2:
+                        st.markdown("**Methods:**")
+                        for method in class_info['methods']:
+                            st.markdown(f"- {method}")
+                st.markdown("---")
+
+def display_code_structure(project_structure):
+    st.subheader("Code Structure Analysis")
+
+    selected_package = st.selectbox(
+        "Select Package",
+        options=list(project_structure.keys())
+    )
+
+    if selected_package:
+        files = project_structure[selected_package]
+        for file in files:
+            with st.expander(f"File: {file['path']}"):
+                for class_info in file['classes']:
+                    st.markdown(f"### Class: {class_info['name']}")
+                    display_class_details(class_info)
+
+def generate_project_uml(java_files):
+    st.subheader("Project UML Class Diagram")
+
+    uml_generator = UMLGenerator()
+    all_classes = []
+
+    for file in java_files:
+        for class_info in file.classes:
+            java_class = JavaCodeParser.dict_to_class(class_info)
+            all_classes.append(java_class)
+
+    uml_code = uml_generator.generate_class_diagram(all_classes)
+    st.text_area("PlantUML Code", uml_code, height=300)
+    st.markdown(create_download_link(uml_code, "project_class_diagram.puml"), unsafe_allow_html=True)
+
+def display_class_details(class_info):
+    if class_info['extends']:
+        st.markdown(f"**Extends:** {class_info['extends']}")
+
+    if class_info['implements']:
+        st.markdown(f"**Implements:**")
+        for interface in class_info['implements']:
+            st.markdown(f"- {interface}")
+
+    st.markdown("**Fields:**")
+    for field in class_info['fields']:
+        st.markdown(f"- {field}")
+
+    st.markdown("**Methods:**")
+    for method in class_info['methods']:
+        st.markdown(f"- {method}")
 
 def analyze_code_structure(code_content: str):
     st.subheader("Code Structure Analysis")

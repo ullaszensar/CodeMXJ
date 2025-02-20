@@ -10,4 +10,5 @@ dependencies = [
     "plantuml>=0.3.0",
     "sqlalchemy>=2.0.38",
     "streamlit>=1.42.1",
+    "trafilatura>=2.0.0",
 ]
